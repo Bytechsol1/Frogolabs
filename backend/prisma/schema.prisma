@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CLINIC_USER
+}
+
+enum WorkflowStatus {
+  PATIENT_CREATED
+  TEST_PACKAGE_SELECTED
+  TASSO_INSTRUCTIONS_SENT
+  KIT_SHIPPED
+  SAMPLE_COLLECTED
+  LAB_PROCESSING
+  RESULTS_READY
+  COMPLETED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+model User {
+  id            String    @id @default(uuid())
+  clinic_id     String?
+  name          String
+  email         String    @unique
+  password_hash String
+  role          Role      @default(CLINIC_USER)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  clinic        Clinic?   @relation(fields: [clinic_id], references: [id])
+  history       WorkflowHistory[]
+  results       LabResult[]
+}
+
+model Clinic {
+  id           String    @id @default(uuid())
+  name         String
+  contact_name String
+  email        String?   @unique
+  phone        String?
+  status       String?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  users        User[]
+  patients     Patient[]
+  workflows    Workflow[]
+  results      LabResult[]
+}
+
+model Patient {
+  id         String     @id @default(uuid())
+  clinic_id  String
+  first_name      String
+  last_name       String
+  email           String?
+  phone           String?
+  secondary_phone String?
+  address         String     @default("")
+  postal_code     String     @default("")
+  dob             DateTime?
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+
+  clinic     Clinic     @relation(fields: [clinic_id], references: [id])
+  workflows  Workflow[]
+  results    LabResult[]
+}
+
+model Workflow {
+  id         String         @id @default(uuid())
+  patient_id String
+  clinic_id  String
+  test_type  String
+  status     WorkflowStatus @default(PATIENT_CREATED)
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+
+  patient    Patient        @relation(fields: [patient_id], references: [id])
+  clinic     Clinic         @relation(fields: [clinic_id], references: [id])
+  history    WorkflowHistory[]
+  results    LabResult[]
+  notifications Notification[]
+}
+
+model WorkflowHistory {
+  id          String   @id @default(uuid())
+  workflow_id String
+  status      String
+  notes       String?
+  updated_by  String
+  created_at  DateTime @default(now())
+
+  workflow    Workflow @relation(fields: [workflow_id], references: [id])
+  user        User     @relation(fields: [updated_by], references: [id])
+}
+
+model LabResult {
+  id          String    @id @default(uuid())
+  workflow_id String?
+  patient_id  String
+  clinic_id   String?
+  file_url    String
+  file_name   String?
+  test_name   String?
+  result_date DateTime?
+  status      String    @default("Available")
+  notes       String?
+  uploaded_by String
+  uploaded_at DateTime  @default(now())
+
+  workflow    Workflow? @relation(fields: [workflow_id], references: [id])
+  patient     Patient   @relation(fields: [patient_id], references: [id])
+  clinic      Clinic?   @relation(fields: [clinic_id], references: [id])
+  user        User      @relation(fields: [uploaded_by], references: [id])
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  workflow_id String
+  channel     NotificationChannel
+  recipient   String
+  message     String
+  status      String
+  sent_at     DateTime?
+
+  workflow    Workflow @relation(fields: [workflow_id], references: [id])
+}
+
+model OtpVerification {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  otp          String
+  pending_data Json
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+}

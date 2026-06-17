@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Env files
+.env
+.env.local
+.env.*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Uploads (user-generated files)
+uploads/
+
+# Misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+
+# Prisma generated client
+generated/prisma
