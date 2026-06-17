@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
@@ -27,7 +27,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const fetchProfile = async (token: string) => {
         try {
-            const res = await axios.get('http://localhost:3000/api/v1/auth/me', {
+            const res = await axios.get('/api/v1/auth/me', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setUser({ ...res.data, token });

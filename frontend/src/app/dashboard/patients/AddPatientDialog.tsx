@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from "react";
 import axios from "axios";
@@ -28,7 +28,7 @@ export function AddPatientDialog({ onPatientAdded }: { onPatientAdded: () => voi
         e.preventDefault();
         setLoading(true);
         try {
-            await axios.post('http://localhost:3000/api/v1/patients', formData, {
+            await axios.post('/api/v1/patients', formData, {
                 headers: { Authorization: `Bearer ${user.token}` }
             });
             setOpen(false);

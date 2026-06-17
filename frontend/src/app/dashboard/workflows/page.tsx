@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -70,7 +70,7 @@ export default function WorkflowsPage() {
     const fetchWorkflows = useCallback(async () => {
         if (!user?.token) return;
         try {
-            const res = await axios.get('http://localhost:3000/api/v1/workflows', {
+            const res = await axios.get('/api/v1/workflows', {
                 headers: { Authorization: `Bearer ${user.token}` },
             });
             setWorkflows(res.data);
@@ -95,7 +95,7 @@ export default function WorkflowsPage() {
         setSaving(true);
         try {
             await axios.patch(
-                `http://localhost:3000/api/v1/workflows/${selectedWf.id}/status`,
+                `/api/v1/workflows/${selectedWf.id}/status`,
                 { status: newStatus, notes: statusNote || undefined, updated_by: user?.sub },
                 { headers: { Authorization: `Bearer ${user?.token}` } }
             );

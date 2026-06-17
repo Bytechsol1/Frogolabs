@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -22,7 +22,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import axios from 'axios';
 
-const API = 'http://localhost:3000/api/v1';
+const API = '/api/v1';
 
 const getResultStatusBadge = (status: string) => {
     switch (status) {
@@ -239,7 +239,7 @@ export default function LabResultsPage() {
                                         <div className="flex justify-end gap-1">
                                             <Button variant="ghost" size="icon-sm" onClick={() => openDrawer(r)}><Eye className="w-4 h-4" /></Button>
                                             {r.file_url && (
-                                                <a href={`http://localhost:3000${r.file_url}`} download={r.file_name || 'lab_result'}>
+                                                <a href={`${r.file_url}`} download={r.file_name || 'lab_result'}>
                                                     <Button variant="ghost" size="icon-sm"><Download className="w-4 h-4" /></Button>
                                                 </a>
                                             )}
@@ -584,7 +584,7 @@ export default function LabResultsPage() {
                                         </div>
                                     </div>
                                     <a
-                                        href={`http://localhost:3000${selectedResult.file_url}`}
+                                        href={`${selectedResult.file_url}`}
                                         download={selectedResult.file_name || 'lab_result'}
                                         className="block"
                                     >

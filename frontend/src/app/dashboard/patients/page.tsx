@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -64,7 +64,7 @@ export default function AllPatientsPage() {
 
     useEffect(() => {
         if (!user?.token) return;
-        axios.get('http://localhost:3000/api/v1/patients', {
+        axios.get('/api/v1/patients', {
             headers: { Authorization: `Bearer ${user.token}` },
         })
             .then(res => setPatients(res.data))

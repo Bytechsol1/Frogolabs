@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useAuth } from "@/context/AuthContext";
@@ -70,8 +70,8 @@ function AdminDashboard() {
         if (!user?.token) return;
         const headers = { Authorization: `Bearer ${user.token}` };
         Promise.all([
-            axios.get('http://localhost:3000/api/v1/patients', { headers }),
-            axios.get('http://localhost:3000/api/v1/clinics', { headers }),
+            axios.get('/api/v1/patients', { headers }),
+            axios.get('/api/v1/clinics', { headers }),
         ])
             .then(([pRes, cRes]) => {
                 setPatients(pRes.data);
@@ -199,7 +199,7 @@ function ClinicDashboard() {
 
     useEffect(() => {
         if (!user?.token) return;
-        axios.get('http://localhost:3000/api/v1/patients', {
+        axios.get('/api/v1/patients', {
             headers: { Authorization: `Bearer ${user.token}` },
         })
             .then(res => setPatients(res.data))

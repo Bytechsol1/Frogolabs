@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -90,7 +90,7 @@ export default function AddPatientPage() {
         setSubmitting(true);
         try {
             const res = await axios.post(
-                'http://localhost:3000/api/v1/patients',
+                '/api/v1/patients',
                 { ...form, test_type: selectedPackage },
                 { headers: { Authorization: `Bearer ${user?.token}` } }
             );

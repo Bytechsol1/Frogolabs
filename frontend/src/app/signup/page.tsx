@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -74,7 +74,7 @@ export default function SignupPage() {
 
         setIsLoading(true);
         try {
-            await axios.post('http://localhost:3000/api/v1/auth/register', {
+            await axios.post('/api/v1/auth/register', {
                 clinicName: form.clinicName,
                 contactName: form.contactName,
                 email: form.email,
@@ -99,7 +99,7 @@ export default function SignupPage() {
         setError('');
         setIsLoading(true);
         try {
-            const response = await axios.post('http://localhost:3000/api/v1/auth/register/verify', {
+            const response = await axios.post('/api/v1/auth/register/verify', {
                 email: form.email,
                 otp: code,
             });
@@ -116,7 +116,7 @@ export default function SignupPage() {
         setResending(true);
         setError('');
         try {
-            await axios.post('http://localhost:3000/api/v1/auth/register', {
+            await axios.post('/api/v1/auth/register', {
                 clinicName: form.clinicName,
                 contactName: form.contactName,
                 email: form.email,

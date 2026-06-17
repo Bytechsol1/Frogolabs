@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import axios from 'axios';
 
-const API = 'http://localhost:3000/api/v1';
+const API = '/api/v1';
 
 const getRoleBadge = (role: string) => {
     if (role === 'ADMIN') return 'bg-indigo-100 text-indigo-700 border-indigo-200';

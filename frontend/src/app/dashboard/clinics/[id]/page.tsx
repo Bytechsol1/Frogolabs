@@ -48,7 +48,7 @@ export default function ClinicDetailPage() {
 
     useEffect(() => {
         if (!user?.token || !id) return;
-        axios.get(`http://localhost:3000/api/v1/clinics/${id}`, {
+        axios.get(`/api/v1/clinics/${id}`, {
             headers: { Authorization: `Bearer ${user.token}` },
         })
             .then(res => setClinic(res.data))

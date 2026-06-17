@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -26,7 +26,7 @@ export default function LoginPage() {
         e.preventDefault();
         setError('');
         try {
-            const response = await axios.post('http://localhost:3000/api/v1/auth/login', { email, password });
+            const response = await axios.post('/api/v1/auth/login', { email, password });
             await login(response.data.access_token);
             router.push('/dashboard');
         } catch (err: any) {

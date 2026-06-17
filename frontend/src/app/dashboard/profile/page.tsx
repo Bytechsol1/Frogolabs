@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ export default function ProfilePage() {
         setSaving(true);
         try {
             const res = await axios.patch(
-                'http://localhost:3000/api/v1/auth/me',
+                '/api/v1/auth/me',
                 { name: name.trim(), email: email.trim() },
                 { headers: { Authorization: `Bearer ${user?.token}` } }
             );

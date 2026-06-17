@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -52,7 +52,7 @@ export default function AllClinicsPage() {
 
     useEffect(() => {
         if (!user?.token) return;
-        axios.get('http://localhost:3000/api/v1/clinics', {
+        axios.get('/api/v1/clinics', {
             headers: { Authorization: `Bearer ${user.token}` },
         })
             .then(res => setClinics(res.data))
@@ -270,7 +270,7 @@ export default function AllClinicsPage() {
                                 try {
                                     const newStatus = selectedClinic.status === 'Inactive' ? 'Active' : 'Inactive';
                                     await axios.put(
-                                        `http://localhost:3000/api/v1/clinics/${selectedClinic.id}`,
+                                        `/api/v1/clinics/${selectedClinic.id}`,
                                         { status: newStatus },
                                         { headers: { Authorization: `Bearer ${user?.token}` } }
                                     );
