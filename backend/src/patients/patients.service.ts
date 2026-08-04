@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Patient } from '@prisma/client';
+import { ValidicService } from '../validic/validic.service';
 
 @Injectable()
 export class PatientsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private validicService: ValidicService,
+    ) { }
 
     async findAll(clinic_id: string | null): Promise<any[]> {
         return this.prisma.patient.findMany({
@@ -38,6 +42,10 @@ export class PatientsService {
                     orderBy: { created_at: 'desc' },
                 },
                 results: true,
+                metrics: {
+                    orderBy: { recorded_at: 'desc' },
+                    take: 50,
+                },
             },
         });
         if (!patient) throw new NotFoundException('Patient not found');
@@ -46,7 +54,7 @@ export class PatientsService {
 
     async create(clinic_id: string, user_id: string, data: any): Promise<any> {
         const { test_type, dob, ...patientData } = data;
-        return this.prisma.patient.create({
+        const patient = await this.prisma.patient.create({
             data: {
                 ...patientData,
                 dob: dob ? new Date(dob) : null,
@@ -70,6 +78,13 @@ export class PatientsService {
                 workflows: { select: { id: true, test_type: true, status: true } },
             },
         });
+
+        // Seamless background provisioning for Validic Platform
+        this.validicService.provisionUser(patient.id).catch((err) => {
+            console.error('Validic auto-provisioning background error:', err);
+        });
+
+        return patient;
     }
 
     async update(id: string, clinic_id: string | null, data: any): Promise<Patient> {

@@ -72,10 +72,13 @@ model Patient {
   dob             DateTime?
   created_at      DateTime   @default(now())
   updated_at      DateTime   @updatedAt
+  validic_user_id        String?
+  validic_marketplace_url String?
 
   clinic     Clinic     @relation(fields: [clinic_id], references: [id])
   workflows  Workflow[]
   results    LabResult[]
+  metrics    HealthMetric[]
 }
 
 model Workflow {
@@ -146,3 +149,18 @@ model OtpVerification {
   expires_at   DateTime
   created_at   DateTime @default(now())
 }
+
+model HealthMetric {
+  id            String   @id @default(uuid())
+  patient_id    String
+  metric_type   String   // e.g. blood_pressure, weight, heart_rate, glucose, steps, sleep, hrv, spo2, temperature
+  value         String   // String or JSON string for compound metrics like { systolic: 120, diastolic: 80 }
+  numeric_value Float?
+  unit          String?
+  source        String?  // e.g. Apple Health, Omron, Withings, Fitbit, Dexcom
+  recorded_at   DateTime
+  created_at    DateTime @default(now())
+
+  patient       Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+}
+

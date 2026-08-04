@@ -52,28 +52,25 @@ export class AuthService {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+        const pendingObj = JSON.stringify({
+            clinicName: data.clinicName,
+            contactName: data.contactName,
+            phone: data.phone,
+            passwordHash,
+        });
+
         await this.prisma.otpVerification.upsert({
             where: { email: data.email },
             create: {
                 email: data.email,
                 otp,
                 expires_at: expiresAt,
-                pending_data: {
-                    clinicName: data.clinicName,
-                    contactName: data.contactName,
-                    phone: data.phone,
-                    passwordHash,
-                },
+                pending_data: pendingObj,
             },
             update: {
                 otp,
                 expires_at: expiresAt,
-                pending_data: {
-                    clinicName: data.clinicName,
-                    contactName: data.contactName,
-                    phone: data.phone,
-                    passwordHash,
-                },
+                pending_data: pendingObj,
             },
         });
 
@@ -100,7 +97,7 @@ export class AuthService {
             throw new BadRequestException('Incorrect verification code. Please try again.');
         }
 
-        const pendingData = record.pending_data as any;
+        const pendingData = typeof record.pending_data === 'string' ? JSON.parse(record.pending_data) : (record.pending_data as any);
 
         const clinic = await this.clinicsService.create({
             name: pendingData.clinicName,

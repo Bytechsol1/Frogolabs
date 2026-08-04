@@ -59,21 +59,47 @@ async function main() {
         test_type: string,
         status: string,
     ) {
-        const existing = await prisma.patient.findFirst({ where: { email: p.email } });
-        if (existing) return;
-        await prisma.patient.create({
-            data: {
-                first_name: p.first_name,
-                last_name: p.last_name,
-                email: p.email,
-                phone: p.phone,
-                dob: new Date(p.dob),
-                clinic_id: clinicId,
-                workflows: {
-                    create: { clinic_id: clinicId, test_type, status: status as any },
+        let patient = await prisma.patient.findFirst({ where: { email: p.email } });
+        if (!patient) {
+            patient = await prisma.patient.create({
+                data: {
+                    first_name: p.first_name,
+                    last_name: p.last_name,
+                    email: p.email,
+                    phone: p.phone,
+                    dob: new Date(p.dob),
+                    clinic_id: clinicId,
+                    validic_user_id: `validic_demo_${p.first_name.toLowerCase()}`,
+                    validic_marketplace_url: `https://syncmydevice.com?token=demo_${p.first_name.toLowerCase()}`,
+                    workflows: {
+                        create: { clinic_id: clinicId, test_type, status: status as any },
+                    },
                 },
-            },
-        });
+            });
+        }
+
+        const count = await prisma.healthMetric.count({ where: { patient_id: patient.id } });
+        if (count === 0) {
+            const now = new Date();
+            const days = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+            await prisma.healthMetric.createMany({
+                data: [
+                    { patient_id: patient.id, metric_type: 'blood_pressure', value: JSON.stringify({ systolic: 118, diastolic: 78 }), numeric_value: 118, unit: 'mmHg', source: 'Omron Evolv', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'blood_pressure', value: JSON.stringify({ systolic: 122, diastolic: 80 }), numeric_value: 122, unit: 'mmHg', source: 'Omron Evolv', recorded_at: days(1) },
+                    { patient_id: patient.id, metric_type: 'blood_pressure', value: JSON.stringify({ systolic: 124, diastolic: 82 }), numeric_value: 124, unit: 'mmHg', source: 'Omron Evolv', recorded_at: days(2) },
+                    { patient_id: patient.id, metric_type: 'weight', value: '74.5', numeric_value: 74.5, unit: 'kg', source: 'Withings Body+', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'weight', value: '74.8', numeric_value: 74.8, unit: 'kg', source: 'Withings Body+', recorded_at: days(1) },
+                    { patient_id: patient.id, metric_type: 'heart_rate', value: '68', numeric_value: 68, unit: 'bpm', source: 'Apple Watch Series 9', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'heart_rate', value: '72', numeric_value: 72, unit: 'bpm', source: 'Apple Watch Series 9', recorded_at: days(1) },
+                    { patient_id: patient.id, metric_type: 'glucose', value: '98', numeric_value: 98, unit: 'mg/dL', source: 'Dexcom G7', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'steps', value: '8450', numeric_value: 8450, unit: 'steps', source: 'Fitbit Charge 6', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'sleep', value: JSON.stringify({ hours: 7.8, quality: 'Good', deep_sleep_hrs: 2.1 }), numeric_value: 7.8, unit: 'hrs', source: 'Oura Ring Gen3', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'hrv', value: '58', numeric_value: 58, unit: 'ms', source: 'Oura Ring Gen3', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'spo2', value: '98', numeric_value: 98, unit: '%', source: 'Apple Watch Series 9', recorded_at: days(0) },
+                    { patient_id: patient.id, metric_type: 'temperature', value: '36.6', numeric_value: 36.6, unit: '°C', source: 'Kinsa Smart Thermometer', recorded_at: days(0) },
+                ],
+            });
+        }
     }
 
     // ── Clinic 1 patients ─────────────────────────────────────────

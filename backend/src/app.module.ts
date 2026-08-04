@@ -11,6 +11,7 @@ import { StorageModule } from './storage/storage.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { LabResultsModule } from './lab-results/lab-results.module';
+import { ValidicModule } from './validic/validic.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LabResultsModule } from './lab-results/lab-results.module';
     NotificationsModule,
     DashboardModule,
     LabResultsModule,
+    ValidicModule,
   ],
   controllers: [AppController],
   providers: [AppService],

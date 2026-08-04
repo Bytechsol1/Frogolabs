@@ -34,6 +34,7 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog";
+import { VitalsDashboard } from "@/components/vitals/VitalsDashboard";
 import { Input } from "@/components/ui/input";
 
 const WORKFLOW_STATUSES = [
@@ -236,12 +237,22 @@ export default function PatientDetailsPage() {
             </Card>
 
             {/* Main Tabs Container */}
-            <Tabs defaultValue="history" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-3 lg:w-[450px] h-12 bg-white border border-border rounded-xl p-1">
+            <Tabs defaultValue="vitals" className="space-y-4">
+                <TabsList className="grid w-full grid-cols-4 lg:w-[620px] h-12 bg-white border border-border rounded-xl p-1">
+                    <TabsTrigger value="vitals" className="rounded-lg font-bold text-xs uppercase tracking-wider"><Activity className="w-4 h-4 mr-2" /> Vitals & Devices</TabsTrigger>
                     <TabsTrigger value="history" className="rounded-lg font-bold text-xs uppercase tracking-wider"><HistoryIcon className="w-4 h-4 mr-2" /> Status History</TabsTrigger>
                     <TabsTrigger value="results" className="rounded-lg font-bold text-xs uppercase tracking-wider"><FlaskConical className="w-4 h-4 mr-2" /> Lab Results</TabsTrigger>
                     <TabsTrigger value="notes" className="rounded-lg font-bold text-xs uppercase tracking-wider"><FileText className="w-4 h-4 mr-2" /> Physician Notes</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="vitals" className="animate-in fade-in-50 duration-500">
+                    <VitalsDashboard
+                        patientId={patient.id}
+                        patientName={`${patient.first_name} ${patient.last_name}`}
+                        marketplaceUrl={patient.validic_marketplace_url}
+                        validicUserId={patient.validic_user_id}
+                    />
+                </TabsContent>
 
                 <TabsContent value="history" className="animate-in fade-in-50 duration-500">
                     <Card className="border-none shadow-md overflow-hidden rounded-2xl">
