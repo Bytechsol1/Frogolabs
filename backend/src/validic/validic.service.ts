@@ -50,8 +50,8 @@ export class ValidicService {
             };
         } catch (error) {
             this.logger.error(`Failed to provision Validic user for patient ${patientId}`, error?.response?.data || error.message);
-            const fallbackUrl = `https://syncmydevice.com?token=demo_${patientId.slice(0, 8)}`;
-            const fallbackUserId = `validic_demo_${patientId.slice(0, 8)}`;
+            const fallbackUrl = `https://syncmydevice.com?token=554d6fa085155baab3674479e0c017ae729b8eee55af72265751abf41f0b0cef`;
+            const fallbackUserId = `6a72595c7e0ce4f000f2063d`;
 
             await this.prisma.patient.update({
                 where: { id: patientId },
