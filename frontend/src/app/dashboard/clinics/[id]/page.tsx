@@ -93,38 +93,38 @@ export default function ClinicDetailPage() {
 
             {/* Back + Header */}
             <div>
-                <Button variant="ghost" className="gap-2 text-muted-foreground mb-4 -ml-2" onClick={() => router.back()}>
+                <Button variant="ghost" className="gap-2 text-slate-500 hover:text-[#080e1e] hover:bg-slate-200 mb-4 -ml-2 transition-all rounded-full px-4" onClick={() => router.back()}>
                     <ArrowLeft className="w-4 h-4" /> All Clinics
                 </Button>
 
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                        <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                            <Building2 className="w-7 h-7 text-primary" />
+                <Card className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white rounded-3xl border border-[#e4dec3]/70 shadow-sm">
+                    <div className="flex items-center gap-5">
+                        <div className="w-16 h-16 rounded-2xl bg-[#080e1e] flex items-center justify-center shrink-0 shadow-md">
+                            <Building2 className="w-8 h-8 text-[#cbb28d]" />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-extrabold tracking-tight text-primary">{clinic.name}</h1>
-                            <p className="text-muted-foreground text-sm mt-0.5">
-                                Primary contact: <span className="font-semibold text-foreground">{clinic.contact_name || '—'}</span>
+                            <h1 className="text-3xl font-extrabold tracking-tight text-[#080e1e]">{clinic.name}</h1>
+                            <p className="text-slate-500 text-sm mt-1">
+                                Primary contact: <span className="font-bold text-slate-900">{clinic.contact_name || '—'}</span>
                             </p>
                             <div className="flex flex-wrap gap-3 mt-2">
                                 {clinic.email && (
-                                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
                                         <Mail className="w-3.5 h-3.5" /> {clinic.email}
                                     </span>
                                 )}
                                 {clinic.phone && (
-                                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
                                         <Phone className="w-3.5 h-3.5" /> {clinic.phone}
                                     </span>
                                 )}
                             </div>
                         </div>
                     </div>
-                    <Badge className={`${clinic.status === 'Active' || !clinic.status ? 'bg-emerald-500' : 'bg-slate-400'} text-white text-xs font-bold uppercase tracking-widest self-start`}>
+                    <Badge className={`${clinic.status === 'Active' || !clinic.status ? 'bg-emerald-500' : 'bg-slate-400'} text-white text-xs font-bold uppercase tracking-widest px-3 py-1 self-start md:self-center`}>
                         {clinic.status || 'Active'}
                     </Badge>
-                </div>
+                </Card>
             </div>
 
             {/* Stats */}
@@ -138,8 +138,8 @@ export default function ClinicDetailPage() {
             <Card className="border-none shadow-sm overflow-hidden">
                 <CardHeader className="bg-muted/10 border-b py-3">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <CardTitle className="text-sm font-bold flex items-center gap-2">
-                            <Users className="w-4 h-4 text-primary" /> Patients ({filtered.length})
+                        <CardTitle className="text-sm font-extrabold flex items-center gap-2 text-[#080e1e]">
+                            <Users className="w-4 h-4 text-[#cbb28d]" /> Patients ({filtered.length})
                         </CardTitle>
                         <div className="flex gap-2 flex-wrap">
                             <div className="relative">
@@ -196,7 +196,7 @@ export default function ClinicDetailPage() {
                                 return (
                                     <TableRow key={p.id} className="hover:bg-muted/20 transition-colors">
                                         <TableCell
-                                            className="font-bold text-primary cursor-pointer hover:underline"
+                                            className="font-extrabold text-[#080e1e] cursor-pointer hover:underline hover:text-[#cbb28d] transition-colors"
                                             onClick={() => router.push(`/dashboard/patients/${p.id}`)}
                                         >
                                             {p.first_name} {p.last_name}
@@ -227,7 +227,7 @@ export default function ClinicDetailPage() {
                                         <TableCell className="text-xs">{wf?.test_type || '—'}</TableCell>
                                         <TableCell>
                                             {wf ? (
-                                                <Badge variant="outline" className={`${STATUS_BADGE[wf.status] || 'bg-slate-50 text-slate-600'} text-[10px] font-bold border`}>
+                                                <Badge variant="outline" className={`${STATUS_BADGE[wf.status] || 'bg-[#080e1e] text-slate-600'} text-[10px] font-bold border`}>
                                                     {STATUS_LABEL[wf.status] || wf.status}
                                                 </Badge>
                                             ) : (
@@ -256,18 +256,20 @@ export default function ClinicDetailPage() {
     );
 }
 
-function StatCard({ title, value, icon: Icon, color }: any) {
+function StatCard({ title, value, icon: Icon }: any) {
     return (
-        <Card className="border-none shadow-sm">
-            <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                    <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{title}</p>
-                    <p className="text-2xl font-black mt-1">{value}</p>
+        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
+                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                        <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
                 </div>
-                <div className="p-2 bg-muted/50 rounded-lg">
-                    <Icon className={`w-5 h-5 ${color}`} />
-                </div>
-            </CardContent>
+            </div>
+            <div>
+                <p className="text-3xl font-extrabold text-slate-900">{value}</p>
+            </div>
         </Card>
     );
 }

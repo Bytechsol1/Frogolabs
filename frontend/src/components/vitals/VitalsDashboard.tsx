@@ -179,28 +179,28 @@ export const VitalsDashboard: React.FC<VitalsDashboardProps> = ({
                             onClick={() => setSelectedMetric(cfg.type)}
                             className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${
                                 isSelected
-                                    ? 'ring-2 ring-indigo-500 border-indigo-500 shadow-md bg-white dark:bg-slate-900'
-                                    : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 hover:border-slate-300'
+                                    ? 'border-[#cbb28d]/40 shadow-lg bg-[#080e1e] ring-1 ring-[#cbb28d]/30'
+                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 shadow-sm'
                             }`}
                         >
                             <div className="flex items-start justify-between">
                                 <div className={`p-2.5 rounded-xl border ${cfg.color}`}>
                                     <Icon className="w-5 h-5" />
                                 </div>
-                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${isSelected ? 'text-[#cbb28d] bg-[#cbb28d]/10' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
                                     {latestItem?.source || 'Device Connected'}
                                 </span>
                             </div>
 
                             <div className="mt-3">
-                                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                <p className={`text-xs font-medium ${isSelected ? 'text-[#cbb28d]/80' : 'text-slate-500 dark:text-slate-400'}`}>
                                     {cfg.title}
                                 </p>
                                 <div className="flex items-baseline gap-1.5 mt-1">
-                                    <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                                    <span className={`text-2xl font-bold tracking-tight ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
                                         {formatValue(cfg.type)}
                                     </span>
-                                    <span className="text-xs text-slate-400 font-medium">{cfg.unit}</span>
+                                    <span className={`text-xs font-medium ${isSelected ? 'text-[#cbb28d]' : 'text-slate-400'}`}>{cfg.unit}</span>
                                 </div>
                             </div>
                         </div>

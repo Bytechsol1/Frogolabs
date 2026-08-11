@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useAuth } from "@/context/AuthContext";
@@ -16,6 +16,11 @@ import {
     ChevronRight,
     Building2,
     Plus,
+    MoreVertical,
+    PhoneCall,
+    AlertCircle,
+    TrendingUp,
+    CalendarDays
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
@@ -36,25 +41,30 @@ const STATUS_LABELS: Record<string, string> = {
     COMPLETED: 'Completed',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-    PATIENT_CREATED: 'bg-blue-100 text-blue-700',
-    TEST_PACKAGE_SELECTED: 'bg-indigo-100 text-indigo-700',
-    TASSO_INSTRUCTIONS_SENT: 'bg-cyan-100 text-cyan-700',
-    KIT_SHIPPED: 'bg-amber-100 text-amber-700',
-    SAMPLE_COLLECTED: 'bg-orange-100 text-orange-700',
-    LAB_PROCESSING: 'bg-purple-100 text-purple-700',
-    RESULTS_READY: 'bg-emerald-100 text-emerald-700',
-    COMPLETED: 'bg-slate-100 text-slate-700',
+const STATUS_BADGES: Record<string, { bg: string; text: string }> = {
+    PATIENT_CREATED: { bg: 'bg-amber-900/10 border border-amber-800/20', text: 'text-amber-900' },
+    TEST_PACKAGE_SELECTED: { bg: 'bg-indigo-900/10 border border-indigo-800/20', text: 'text-indigo-900' },
+    TASSO_INSTRUCTIONS_SENT: { bg: 'bg-sky-900/10 border border-sky-800/20', text: 'text-sky-900' },
+    KIT_SHIPPED: { bg: 'bg-amber-900/10 border border-amber-800/20', text: 'text-amber-900' },
+    SAMPLE_COLLECTED: { bg: 'bg-rose-900/10 border border-rose-800/20', text: 'text-rose-900' },
+    LAB_PROCESSING: { bg: 'bg-purple-900/10 border border-purple-800/20', text: 'text-purple-900' },
+    RESULTS_READY: { bg: 'bg-[#080e1e] border border-[#cbb28d]/30', text: 'text-[#cbb28d]' },
+    COMPLETED: { bg: 'bg-slate-900/10 border border-slate-700/20', text: 'text-slate-800' },
 };
 
-const STAGE_ORDER = [
-    'PATIENT_CREATED', 'TEST_PACKAGE_SELECTED', 'TASSO_INSTRUCTIONS_SENT',
-    'KIT_SHIPPED', 'SAMPLE_COLLECTED', 'LAB_PROCESSING', 'RESULTS_READY', 'COMPLETED',
+const DAYS_BAR = [
+    { day: 'SAT', date: '6' },
+    { day: 'SUN', date: '7' },
+    { day: 'MON', date: '8' },
+    { day: 'TUE', date: '9' },
+    { day: 'WED', date: '10' },
+    { day: 'THU', date: '11' },
+    { day: 'FRI', date: '12', active: true },
+    { day: 'SAT', date: '13' },
+    { day: 'SUN', date: '14' },
+    { day: 'MON', date: '15' },
+    { day: 'TUE', date: '16' },
 ];
-
-function daysSince(dateStr: string) {
-    return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
-}
 
 // ─────────────────────────────────────────────────────────────────
 // ADMIN DASHBOARD
@@ -77,7 +87,7 @@ function AdminDashboard() {
                 setPatients(pRes.data);
                 setClinics(cRes.data);
             })
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoading(false));
     }, [user?.token]);
 
@@ -85,104 +95,156 @@ function AdminDashboard() {
     const totalPatients = patients.length;
     const activeWorkflows = patients.filter(p => p.workflows?.[0]?.status && p.workflows[0].status !== 'COMPLETED').length;
     const resultsReady = patients.filter(p => p.workflows?.[0]?.status === 'RESULTS_READY').length;
-    const completed = patients.filter(p => p.workflows?.[0]?.status === 'COMPLETED').length;
+    const completedWorkflows = patients.filter(p => p.workflows?.[0]?.status === 'COMPLETED').length;
 
-    const stageCounts = patients.reduce<Record<string, number>>((acc, p) => {
-        const s = p.workflows?.[0]?.status;
-        if (s) acc[s] = (acc[s] || 0) + 1;
-        return acc;
-    }, {});
+    const recentPatients = patients.slice(0, 5);
+    const attentionPatients = patients.filter(p => ['RESULTS_READY', 'SAMPLE_COLLECTED', 'KIT_SHIPPED'].includes(p.workflows?.[0]?.status)).slice(0, 3);
+    const telemetryPatients = patients.filter(p => p.validic_user_id).slice(0, 3);
 
-    const recentPatients = patients.slice(0, 6);
-
-    if (loading) return <DashboardSkeleton cols={5} />;
+    if (loading) return <MediqSkeleton />;
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700">
+        <div className="space-y-8 animate-in fade-in duration-500 pb-8">
+            {/* Header */}
             <div>
-                <h1 className="text-4xl font-extrabold tracking-tight text-primary">Dashboard</h1>
-                <p className="text-muted-foreground mt-1">Overview of all clinics, patients, and diagnostic workflows.</p>
+                <span className="text-[10px] font-mono tracking-[0.25em] text-[#8c7657] uppercase font-bold block mb-1">
+
+                </span>
+                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#080e1e]">
+                    Hello, {user?.name || 'Admin'}
+                </h1>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                <StatCard title="Total Clinics" value={String(totalClinics)} icon={Building2} color="text-blue-500" />
-                <StatCard title="Total Patients" value={String(totalPatients)} icon={Users} color="text-indigo-500" />
-                <StatCard title="Active Workflows" value={String(activeWorkflows)} icon={Activity} color="text-amber-500" />
-                <StatCard title="Results Ready" value={String(resultsReady)} icon={FlaskConical} color="text-rose-500" />
-                <StatCard title="Completed" value={String(completed)} icon={CheckCircle} color="text-emerald-500" />
+            {/* Stat Cards (5 KPI Cards restored) */}
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5">
+                <MediqStatCard title="Total Clinics" value={String(totalClinics)} icon={Building2} />
+                <MediqStatCard title="Total Patients" value={String(totalPatients)} icon={Users} />
+                <MediqStatCard title="Active Workflows" value={String(activeWorkflows)} icon={Activity} />
+                <MediqStatCard title="Results Ready" value={String(resultsReady)} icon={FlaskConical} />
+                <MediqStatCard title="Completed" value={String(completedWorkflows)} icon={CheckCircle} />
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
-                {/* Workflow breakdown */}
-                <Card className="lg:col-span-1 shadow-sm border-none bg-slate-50/50 dark:bg-slate-900/50">
-                    <CardHeader>
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <Activity className="w-5 h-4 text-primary" />
-                            Workflow Overview
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {STAGE_ORDER.map(s => (
-                            <WorkflowStage key={s} name={STATUS_LABELS[s]} count={stageCounts[s] || 0} color={STATUS_COLORS[s]} />
-                        ))}
-                    </CardContent>
-                </Card>
+            {/* Main Grid */}
+            <div className="grid gap-6 lg:grid-cols-12">
+                {/* Left Workflow List */}
+                <div className="lg:col-span-8 space-y-6">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <h2 className="text-lg font-bold text-[#080e1e] flex items-center gap-2">
+                                <CalendarDays className="w-5 h-5 text-[#cbb28d]" /> Active Patient Workflows
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <Button size="sm" className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full gap-1.5 px-4 h-9 shadow-sm" onClick={() => router.push('/dashboard/patients')}>
+                                    <Plus className="w-4 h-4 text-[#cbb28d]" /> View Patients
+                                </Button>
+                            </div>
+                        </div>
 
-                {/* Recent patients */}
-                <Card className="lg:col-span-2 shadow-sm border-none">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <Users className="w-5 h-5 text-primary" />
-                            Recent Patients
-                        </CardTitle>
-                        <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => router.push('/dashboard/patients')}>
-                            View All
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-muted/30">
-                                    <TableHead className="font-bold">Patient Name</TableHead>
-                                    <TableHead className="font-bold">Clinic</TableHead>
-                                    <TableHead className="font-bold">Status</TableHead>
-                                    <TableHead className="font-bold">Date Added</TableHead>
-                                    <TableHead className="text-right w-[60px]" />
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {recentPatients.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic text-sm">No patients yet.</TableCell>
-                                    </TableRow>
-                                ) : recentPatients.map(p => (
-                                    <TableRow
+                        {/* Workflow Rows */}
+                        <div className="space-y-3">
+                            {recentPatients.length === 0 ? (
+                                <p className="text-center py-8 text-slate-500 text-xs italic">No active workflows available.</p>
+                            ) : recentPatients.map((p) => {
+                                const st = p.workflows?.[0]?.status || 'PATIENT_CREATED';
+                                const badgeInfo = STATUS_BADGES[st] || { bg: 'bg-[#080e1e]', text: 'text-[#cbb28d]' };
+                                const isGreen = ['RESULTS_READY', 'COMPLETED'].includes(st);
+
+                                return (
+                                    <div
                                         key={p.id}
-                                        className="hover:bg-muted/50 transition-colors cursor-pointer"
                                         onClick={() => router.push(`/dashboard/patients/${p.id}`)}
+                                        className="relative p-4 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] transition-all duration-200 flex items-center justify-between gap-4 cursor-pointer group"
                                     >
-                                        <TableCell className="font-semibold">{p.first_name} {p.last_name}</TableCell>
-                                        <TableCell className="text-xs text-muted-foreground">{p.clinic?.name || '—'}</TableCell>
-                                        <TableCell>
-                                            <Badge className={`${STATUS_COLORS[p.workflows?.[0]?.status] || 'bg-slate-100 text-slate-700'} text-[10px] font-bold border-none`}>
-                                                {STATUS_LABELS[p.workflows?.[0]?.status] || 'N/A'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-sm text-muted-foreground italic">
-                                            {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-primary hover:text-white rounded-full">
-                                                <ChevronRight className="w-4 h-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
+                                        <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${isGreen ? 'bg-[#cbb28d]' : 'bg-[#080e1e]'
+                                            }`} />
 
+                                        <div className="pl-3 flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-[#080e1e] text-[#cbb28d] font-bold text-sm flex items-center justify-center shrink-0 border border-[#cbb28d]/30">
+                                                {p.first_name[0]}{p.last_name[0]}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-[#080e1e] group-hover:text-[#8c7657] transition-colors">
+                                                    {p.first_name} {p.last_name}
+                                                </p>
+                                                <p className="text-xs text-slate-500">
+                                                    {p.clinic?.name || 'Clinic'} • {p.workflows?.[0]?.test_type || 'General Diagnostic'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${badgeInfo.bg} ${badgeInfo.text}`}>
+                                                {STATUS_LABELS[st] || st}
+                                            </span>
+                                            <button className="w-8 h-8 rounded-full bg-white border border-[#ded8c4] flex items-center justify-center text-[#080e1e] hover:bg-[#080e1e] hover:text-white transition-colors">
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Card>
+                </div>
+
+                {/* Right Side Cards */}
+                <div className="lg:col-span-4 space-y-6">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-sm font-extrabold text-[#080e1e] flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 text-rose-700" /> Needs Attention
+                            </h2>
+                            <button className="text-xs font-bold text-[#8c7657] hover:underline" onClick={() => router.push('/dashboard/workflows')}>
+                                View All
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {attentionPatients.length === 0 ? (
+                                <p className="text-center py-4 text-slate-500 text-xs italic">All clear.</p>
+                            ) : attentionPatients.map(p => {
+                                const st = p.workflows[0].status;
+                                let type = 'info';
+                                if (st === 'RESULTS_READY') type = 'urgent';
+                                else if (st === 'SAMPLE_COLLECTED') type = 'warning';
+
+                                return (
+                                    <AttentionItem key={p.id} title={STATUS_LABELS[st] || st} patient={`${p.first_name} ${p.last_name}`} time={new Date(p.workflows[0].created_at).toLocaleDateString()} type={type} onClick={() => router.push(`/dashboard/patients/${p.id}`)} />
+                                );
+                            })}
+                        </div>
+                    </Card>
+
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-sm font-extrabold text-[#080e1e] flex items-center gap-2">
+                                <Users className="w-4 h-4 text-[#cbb28d]" /> Active Patient Telemetry
+                            </h2>
+                            <button className="text-xs font-bold text-[#8c7657] hover:underline" onClick={() => router.push('/dashboard/patients')}>
+                                View All
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {telemetryPatients.length === 0 ? (
+                                <p className="text-center py-4 text-slate-500 text-xs italic">No active telemetry.</p>
+                            ) : telemetryPatients.map(p => (
+                                <div key={p.id} onClick={() => router.push(`/dashboard/patients/${p.id}`)} className="flex items-center justify-between p-3 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] cursor-pointer transition-all duration-200">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-full bg-[#080e1e] text-[#cbb28d] text-xs font-bold flex items-center justify-center border border-[#cbb28d]/30">
+                                            {p.first_name[0]}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-[#080e1e]">{p.first_name} {p.last_name}</p>
+                                            <p className="text-[10px] text-[#8c7657] font-bold">Vitals Sync Active</p>
+                                        </div>
+                                    </div>
+                                    <span className="w-2 h-2 rounded-full bg-[#cbb28d] animate-pulse" />
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
             </div>
         </div>
     );
@@ -203,7 +265,7 @@ function ClinicDashboard() {
             headers: { Authorization: `Bearer ${user.token}` },
         })
             .then(res => setPatients(res.data))
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoading(false));
     }, [user?.token]);
 
@@ -211,220 +273,171 @@ function ClinicDashboard() {
     const active = patients.filter(p => p.workflows?.[0]?.status && p.workflows[0].status !== 'COMPLETED').length;
     const resultsReady = patients.filter(p => p.workflows?.[0]?.status === 'RESULTS_READY').length;
     const completed = patients.filter(p => p.workflows?.[0]?.status === 'COMPLETED').length;
-    const recentPatients = patients.slice(0, 5);
-    const awaitingList = patients.filter(p => ['LAB_PROCESSING', 'RESULTS_READY'].includes(p.workflows?.[0]?.status)).slice(0, 5);
 
-    const stageCounts = patients.reduce<Record<string, number>>((acc, p) => {
-        const s = p.workflows?.[0]?.status;
-        if (s) acc[s] = (acc[s] || 0) + 1;
-        return acc;
-    }, {});
+    const attentionPatients = patients.filter(p => ['RESULTS_READY', 'SAMPLE_COLLECTED', 'KIT_SHIPPED'].includes(p.workflows?.[0]?.status)).slice(0, 3);
 
-    if (loading) return <DashboardSkeleton cols={4} />;
+    if (loading) return <MediqSkeleton />;
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-8 animate-in fade-in duration-500 pb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-4xl font-extrabold tracking-tight text-primary">Dashboard</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Welcome back, <span className="font-semibold text-foreground">{user?.name}</span>. Here's your clinic's activity.
-                    </p>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#080e1e]">
+                        Hello, Dr. {user?.name?.split(' ')[0] || user?.name}
+                    </h1>
                 </div>
-                <Button className="gap-2 shadow-md bg-primary hover:bg-primary/90" onClick={() => router.push('/dashboard/patients/add')}>
-                    <Plus className="w-4 h-4" /> Add Patient
+                <Button className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full gap-2 px-5 h-10 shadow-sm self-start" onClick={() => router.push('/dashboard/patients/add')}>
+                    <Plus className="w-4 h-4 text-[#cbb28d]" /> Add New Patient
                 </Button>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard title="My Patients" value={String(total)} icon={Users} color="text-indigo-500" />
-                <StatCard title="Active Workflows" value={String(active)} icon={Activity} color="text-amber-500" />
-                <StatCard title="Results Ready" value={String(resultsReady)} icon={FlaskConical} color="text-rose-500" />
-                <StatCard title="Completed" value={String(completed)} icon={CheckCircle} color="text-emerald-500" />
+                <MediqStatCard title="Active Patients" value={String(total)} icon={Users} />
+                <MediqStatCard title="Active Workflows" value={String(active)} icon={Activity} />
+                <MediqStatCard title="Results Ready" value={String(resultsReady)} icon={FlaskConical} />
+                <MediqStatCard title="Completed Sessions" value={String(completed)} icon={CheckCircle} />
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-1 shadow-sm border-none bg-slate-50/50 dark:bg-slate-900/50">
-                    <CardHeader>
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <Activity className="w-5 h-4 text-primary" /> Workflow Status
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {STAGE_ORDER.map(s => (
-                            <WorkflowStage key={s} name={STATUS_LABELS[s]} count={stageCounts[s] || 0} color={STATUS_COLORS[s]} />
-                        ))}
-                    </CardContent>
-                </Card>
+            <div className="grid gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-8 space-y-6">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-6">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-bold text-[#080e1e] flex items-center gap-2">
+                                <CalendarDays className="w-5 h-5 text-[#cbb28d]" /> Patient Diagnostics Pipeline
+                            </h2>
+                        </div>
 
-                <Card className="lg:col-span-2 shadow-sm border-none">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <Users className="w-5 h-5 text-primary" /> My Recent Patients
-                        </CardTitle>
-                        <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => router.push('/dashboard/patients')}>
-                            View All
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        {recentPatients.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground text-sm">No patients yet. Add your first patient.</div>
-                        ) : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/30">
-                                        <TableHead className="font-bold">Patient Name</TableHead>
-                                        <TableHead className="font-bold">Test Package</TableHead>
-                                        <TableHead className="font-bold">Status</TableHead>
-                                        <TableHead className="font-bold">Date Added</TableHead>
-                                        <TableHead className="text-right w-[60px]" />
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {recentPatients.map(p => (
-                                        <TableRow key={p.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => router.push(`/dashboard/patients/${p.id}`)}>
-                                            <TableCell className="font-semibold">{p.first_name} {p.last_name}</TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">{p.workflows?.[0]?.test_type || '—'}</TableCell>
-                                            <TableCell>
-                                                <Badge className={`${STATUS_COLORS[p.workflows?.[0]?.status] || 'bg-slate-100 text-slate-700'} text-[10px] font-bold border-none`}>
-                                                    {STATUS_LABELS[p.workflows?.[0]?.status] || 'N/A'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-sm text-muted-foreground italic">
-                                                {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-primary hover:text-white rounded-full">
-                                                    <ChevronRight className="w-4 h-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        )}
-                    </CardContent>
-                </Card>
 
-                <Card className="lg:col-span-1 shadow-md border-amber-200/60 bg-amber-50/30 dark:bg-amber-950/10">
-                    <CardHeader>
-                        <CardTitle className="text-base font-bold text-amber-700 flex items-center gap-2">
-                            <Clock className="w-4 h-4" /> Awaiting Lab Results
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {awaitingList.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No patients awaiting results.</p>
-                        ) : (
-                            <ul className="space-y-3">
-                                {awaitingList.map(p => (
-                                    <li key={p.id} className="flex items-center justify-between py-2 border-b last:border-0 cursor-pointer hover:opacity-80" onClick={() => router.push(`/dashboard/patients/${p.id}`)}>
-                                        <div>
-                                            <p className="text-sm font-semibold">{p.first_name} {p.last_name}</p>
-                                            <p className="text-xs text-muted-foreground">{p.workflows?.[0]?.test_type}</p>
+                        <div className="space-y-3">
+                            {patients.length === 0 ? (
+                                <p className="text-center py-8 text-slate-500 text-xs italic">No patient records found.</p>
+                            ) : patients.slice(0, 5).map(p => {
+                                const st = p.workflows?.[0]?.status || 'PATIENT_CREATED';
+                                const badgeInfo = STATUS_BADGES[st] || { bg: 'bg-[#080e1e]', text: 'text-[#cbb28d]' };
+
+                                return (
+                                    <div
+                                        key={p.id}
+                                        onClick={() => router.push(`/dashboard/patients/${p.id}`)}
+                                        className="relative p-4 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] transition-all duration-200 flex items-center justify-between gap-4 cursor-pointer group"
+                                    >
+                                        <div className="absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full bg-[#080e1e]" />
+
+                                        <div className="pl-3 flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-[#080e1e] text-[#cbb28d] font-bold text-sm flex items-center justify-center shrink-0 border border-[#cbb28d]/30">
+                                                {p.first_name[0]}{p.last_name[0]}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-[#080e1e] group-hover:text-[#8c7657] transition-colors">
+                                                    {p.first_name} {p.last_name}
+                                                </p>
+                                                <p className="text-xs text-slate-500">
+                                                    {p.workflows?.[0]?.test_type || 'General Diagnostic'}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <Badge className={`text-[10px] font-black ${p.workflows?.[0]?.status === 'RESULTS_READY' ? 'bg-emerald-500' : 'bg-amber-500'} text-white`}>
-                                            {p.workflows?.[0]?.status === 'RESULTS_READY' ? 'Ready' : `${daysSince(p.created_at)}d`}
-                                        </Badge>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </CardContent>
-                </Card>
 
-                <Card className="lg:col-span-1 shadow-sm border-none">
-                    <CardHeader>
-                        <CardTitle className="text-base font-bold flex items-center gap-2">
-                            <ChevronRight className="w-4 h-4 text-primary" /> Quick Actions
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        <Button variant="outline" className="w-full justify-start gap-2 text-sm" onClick={() => router.push('/dashboard/patients/add')}>
-                            <Plus className="w-4 h-4 text-primary" /> Add New Patient
-                        </Button>
-                        <Button variant="outline" className="w-full justify-start gap-2 text-sm" onClick={() => router.push('/dashboard/workflows')}>
-                            <Activity className="w-4 h-4 text-primary" /> View All Workflows
-                        </Button>
-                        <Button variant="outline" className="w-full justify-start gap-2 text-sm" onClick={() => router.push('/dashboard/lab-results')}>
-                            <FlaskConical className="w-4 h-4 text-primary" /> Check Lab Results
-                        </Button>
-                        <Button variant="outline" className="w-full justify-start gap-2 text-sm" onClick={() => router.push('/dashboard/patients')}>
-                            <Users className="w-4 h-4 text-primary" /> View All Patients
-                        </Button>
-                    </CardContent>
-                </Card>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${badgeInfo.bg} ${badgeInfo.text}`}>
+                                                {STATUS_LABELS[st] || st}
+                                            </span>
+                                            <button className="w-8 h-8 rounded-full bg-white border border-[#ded8c4] flex items-center justify-center text-[#080e1e] hover:bg-[#080e1e] hover:text-white transition-colors">
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Card>
+                </div>
+
+                <div className="lg:col-span-4 space-y-6">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-sm font-extrabold text-[#080e1e] flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 text-rose-700" /> Needs Attention
+                            </h2>
+                        </div>
+                        <div className="space-y-3">
+                            {attentionPatients.length === 0 ? (
+                                <p className="text-center py-4 text-slate-500 text-xs italic">All clear.</p>
+                            ) : attentionPatients.map(p => {
+                                const st = p.workflows[0].status;
+                                let type = 'info';
+                                if (st === 'RESULTS_READY') type = 'urgent';
+                                else if (st === 'SAMPLE_COLLECTED') type = 'warning';
+
+                                return (
+                                    <AttentionItem key={p.id} title={STATUS_LABELS[st] || st} patient={`${p.first_name} ${p.last_name}`} time={new Date(p.workflows[0].created_at).toLocaleDateString()} type={type} onClick={() => router.push(`/dashboard/patients/${p.id}`)} />
+                                );
+                            })}
+                        </div>
+                    </Card>
+                </div>
             </div>
         </div>
     );
 }
 
-function StatCard({ title, value, icon: Icon, color }: any) {
+function MediqStatCard({ title, value, badge, icon: Icon, subText }: any) {
     return (
-        <Card className="border-none shadow-sm hover:shadow-md transition-shadow duration-300">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{title}</CardTitle>
-                <Icon className={`h-4 w-4 ${color}`} />
-            </CardHeader>
-            <CardContent>
-                <div className="text-3xl font-black">{value}</div>
-            </CardContent>
+        <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-5 space-y-3 transition-transform hover:-translate-y-0.5 text-left">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                        <Icon className="w-6 h-6" />
+                    </div>
+                    <span className="uppercase text-xs font-mono font-black tracking-widest text-[#080e1e] whitespace-nowrap">{title}</span>
+                </div>
+            </div>
+
+            <div className="flex items-baseline justify-between pt-1">
+                <span className="text-3xl font-extrabold text-[#080e1e] tracking-tight">{value}</span>
+                {badge && (
+                    <span className="text-xs font-bold text-[#080e1e] bg-[#e4dec3]/50 px-2.5 py-0.5 rounded-full border border-[#cbb28d]/30">
+                        {badge}
+                    </span>
+                )}
+            </div>
+
+            {subText && (
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-[#e6e0ce]">
+                    <span>{subText}</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-[#8c7657]" />
+                </div>
+            )}
         </Card>
     );
 }
 
-function DashboardSkeleton({ cols }: { cols: number }) {
+function AttentionItem({ title, patient, time, type, onClick }: any) {
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="space-y-2">
-                <Skeleton className="h-9 w-48" />
-                <Skeleton className="h-4 w-72" />
+        <div onClick={onClick} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] cursor-pointer transition-all duration-200">
+            <div className="flex items-center gap-3">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${type === 'urgent' ? 'bg-rose-900/15 text-rose-800' : 'bg-[#080e1e] text-[#cbb28d]'
+                    }`}>
+                    !
+                </div>
+                <div>
+                    <p className="text-xs font-bold text-[#080e1e]">{title}</p>
+                    <p className="text-[10px] text-slate-500">{patient} • {time}</p>
+                </div>
             </div>
-            <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-${cols}`}>
-                {Array.from({ length: cols }).map((_, i) => (
-                    <Card key={i} className="border-none shadow-sm">
-                        <CardContent className="p-5 flex items-center justify-between">
-                            <div className="space-y-2">
-                                <Skeleton className="h-3 w-24" />
-                                <Skeleton className="h-8 w-12" />
-                            </div>
-                            <Skeleton className="h-8 w-8 rounded-full" />
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
-            <div className="grid gap-6 lg:grid-cols-3">
-                <Card className="border-none shadow-sm">
-                    <CardContent className="p-5 space-y-3">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                            <Skeleton key={i} className="h-9 w-full rounded-lg" />
-                        ))}
-                    </CardContent>
-                </Card>
-                <Card className="lg:col-span-2 border-none shadow-sm">
-                    <CardContent className="p-0">
-                        <div className="p-4 space-y-3">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                                <div key={i} className="flex items-center gap-4">
-                                    <Skeleton className="h-4 flex-1" />
-                                    <Skeleton className="h-4 w-24" />
-                                    <Skeleton className="h-6 w-20 rounded-full" />
-                                    <Skeleton className="h-4 w-20" />
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+            <MoreVertical className="w-4 h-4 text-slate-400 cursor-pointer" />
         </div>
     );
 }
 
-function WorkflowStage({ name, count, color }: any) {
+function MediqSkeleton() {
     return (
-        <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-background/50 hover:bg-background transition-colors">
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{name}</span>
-            <Badge className={`font-bold border-none ${color}`}>{count}</Badge>
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <Skeleton className="h-10 w-64 bg-[#e4dec3]/50 rounded-xl" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-32 rounded-3xl bg-white shadow-xs" />
+                ))}
+            </div>
         </div>
     );
 }

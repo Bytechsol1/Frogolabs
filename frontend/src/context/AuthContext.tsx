@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             setUser({ ...res.data, token });
         } catch (err) {
-            console.error('Session expired', err);
+            console.warn('Session expired or invalid token.');
             localStorage.removeItem('access_token');
             setUser(null);
         } finally {

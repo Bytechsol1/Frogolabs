@@ -21,7 +21,7 @@ export default function CompletedWorkflowsPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     <Table>
-                        <TableHeader className="bg-slate-50/50">
+                        <TableHeader className="bg-[#080e1e]/50">
                             <TableRow>
                                 <TableHead className="font-bold">Patient</TableHead>
                                 <TableHead className="font-bold">Final Status</TableHead>

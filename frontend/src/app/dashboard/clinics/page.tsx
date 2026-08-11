@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useMemo, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -56,7 +56,7 @@ export default function AllClinicsPage() {
             headers: { Authorization: `Bearer ${user.token}` },
         })
             .then(res => setClinics(res.data))
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoading(false));
     }, [user?.token]);
 
@@ -80,35 +80,39 @@ export default function AllClinicsPage() {
     const inactive = clinics.filter(c => c.status === 'Inactive').length;
 
     const statusColor = (s: string) => {
-        if (!s || s === 'Active') return 'bg-emerald-500';
-        if (s === 'Pending') return 'bg-amber-500';
-        return 'bg-slate-400';
+        if (!s || s === 'Active') return 'bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30 font-bold';
+        if (s === 'Pending') return 'bg-amber-950/20 text-amber-900 border border-amber-900/30';
+        return 'bg-slate-200 text-slate-700';
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-primary">All Clinics</h1>
-                    <p className="text-muted-foreground mt-1 text-sm font-medium">Manage clinic accounts, contacts, and workflow activity.</p>
-                </div>
+        <div className="space-y-8 animate-in fade-in duration-500 pb-8">
+            {/* Header */}
+            <div>
+                <span className="text-[10px] font-mono tracking-[0.25em] text-[#8c7657] uppercase font-bold block mb-1">
+
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#080e1e]">
+                    Clinic Network Directory
+                </h1>
+
             </div>
 
-            {/* Search + Filters */}
-            <Card className="border-none shadow-sm overflow-hidden">
+            {/* Search + Filters (Off-White & Cream) */}
+            <Card className="border border-[#e4dec3]/70 bg-white shadow-xs rounded-3xl overflow-hidden">
                 <CardContent className="p-4 flex flex-col md:flex-row gap-3">
                     <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
-                            placeholder="Search by clinic name, contact, email, or phone"
-                            className="pl-10"
+                            placeholder="Search clinic name, contact, email, or phone..."
+                            className="pl-10 h-10 bg-white border-[#ded8c4] text-[#080e1e] placeholder:text-slate-400 rounded-full focus:border-[#080e1e] text-xs font-medium"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
                     </div>
                     <div className="flex gap-2 shrink-0">
                         <select
-                            className="bg-background border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 ring-primary/20"
+                            className="bg-white border border-[#ded8c4] rounded-full px-4 py-2 text-xs font-bold text-[#080e1e] outline-none focus:border-[#080e1e]"
                             value={statusFilter}
                             onChange={e => setStatusFilter(e.target.value)}
                         >
@@ -117,110 +121,108 @@ export default function AllClinicsPage() {
                             <option value="Pending">Pending</option>
                             <option value="Inactive">Inactive</option>
                         </select>
-                        <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}>
-                            <RotateCcw className="w-4 h-4" /> Reset
-                        </Button>
+                        {searchQuery && (
+                            <Button variant="ghost" className="gap-2 text-xs font-bold text-slate-600 hover:text-[#080e1e] rounded-full" onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}>
+                                <RotateCcw className="w-3.5 h-3.5" /> Reset
+                            </Button>
+                        )}
                     </div>
                 </CardContent>
             </Card>
 
             {/* Summary cards */}
             <div className="grid gap-4 md:grid-cols-4">
-                <SummaryCard title="Total Clinics" value={total} icon={Building2} color="text-primary" />
-                <SummaryCard title="Active Clinics" value={active} icon={Activity} color="text-emerald-500" />
-                <SummaryCard title="Pending Clinics" value={pending} icon={RotateCcw} color="text-amber-500" />
-                <SummaryCard title="Inactive Clinics" value={inactive} icon={UserMinus} color="text-slate-400" />
+                <SummaryCard title="Total Clinics" value={total} icon={Building2} />
+                <SummaryCard title="Active Clinics" value={active} icon={Activity} />
+                <SummaryCard title="Pending Clinics" value={pending} icon={RotateCcw} />
+                <SummaryCard title="Inactive Clinics" value={inactive} icon={UserMinus} />
             </div>
 
             {/* Table */}
-            <Card className="border-none shadow-sm overflow-hidden min-w-0">
-                <CardHeader className="bg-muted/10 border-b">
-                    <CardTitle className="text-lg">Clinic Directory</CardTitle>
+            <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden min-w-0">
+                <CardHeader className="bg-white/60 border-b border-[#e6e0ce] py-4">
+                    <CardTitle className="text-sm font-bold text-[#080e1e]">Registered Clinics</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                     {loading ? (
                         <div className="p-4 space-y-3">
-                            {Array.from({ length: 6 }).map((_, i) => (
+                            {Array.from({ length: 5 }).map((_, i) => (
                                 <div key={i} className="flex items-center gap-4 py-2">
-                                    <Skeleton className="h-4 w-36" />
-                                    <Skeleton className="h-4 w-24" />
-                                    <Skeleton className="h-4 flex-1" />
-                                    <Skeleton className="h-4 w-8" />
-                                    <Skeleton className="h-4 w-8" />
-                                    <Skeleton className="h-5 w-16 rounded-full" />
-                                    <Skeleton className="h-8 w-8 rounded-full" />
+                                    <Skeleton className="h-4 w-36 bg-[#e4dec3]/50" />
+                                    <Skeleton className="h-4 w-24 bg-[#e4dec3]/50" />
+                                    <Skeleton className="h-4 flex-1 bg-[#e4dec3]/50" />
                                 </div>
                             ))}
                         </div>
                     ) : (
                         <Table>
-                            <TableHeader className="bg-muted/50 border-b">
-                                <TableRow className="hover:bg-transparent">
-                                    <TableHead className="font-bold">Clinic Name</TableHead>
-                                    <TableHead className="font-bold">Primary Contact</TableHead>
-                                    <TableHead className="font-bold">Contact Details</TableHead>
-                                    <TableHead className="font-bold text-center">Patients</TableHead>
-                                    <TableHead className="font-bold text-center">Workflows</TableHead>
-                                    <TableHead className="font-bold">Status</TableHead>
-                                    <TableHead className="text-right font-bold w-[60px]">Actions</TableHead>
+                            <TableHeader className="bg-[#f2ede0]/80 border-b border-[#e6e0ce]">
+                                <TableRow>
+                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Clinic Name</TableHead>
+                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Primary Contact</TableHead>
+                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Contact Details</TableHead>
+                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-center">Patients</TableHead>
+                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-center">Workflows</TableHead>
+                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Status</TableHead>
+                                    <TableHead className="text-right font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] pr-6">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {filteredClinics.map(c => (
-                                    <TableRow key={c.id} className="hover:bg-muted/30 transition-colors">
+                                    <TableRow key={c.id} className="hover:bg-[#f3eee0] transition-colors border-b border-[#e6e0ce]">
                                         <TableCell
-                                            className="font-bold text-primary cursor-pointer hover:underline"
+                                            className="font-bold text-xs text-[#080e1e] cursor-pointer hover:underline"
                                             onClick={() => router.push(`/dashboard/clinics/${c.id}`)}
                                         >
                                             {c.name}
                                         </TableCell>
-                                        <TableCell className="font-medium text-sm">{c.contact_name || '—'}</TableCell>
+                                        <TableCell className="font-medium text-xs text-slate-700">{c.contact_name || '—'}</TableCell>
                                         <TableCell>
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-0.5">
                                                 {c.email && (
-                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                                        <Mail className="w-3 h-3" /> {c.email}
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                                        <Mail className="w-3 h-3 text-[#cbb28d]" /> {c.email}
                                                     </div>
                                                 )}
                                                 {c.phone && (
-                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                                        <Phone className="w-3 h-3" /> {c.phone}
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                                        <Phone className="w-3 h-3 text-[#cbb28d]" /> {c.phone}
                                                     </div>
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-center font-bold">
+                                        <TableCell className="text-center font-bold text-xs text-[#080e1e]">
                                             <div className="flex items-center justify-center gap-1">
-                                                <Users className="w-3 h-3 text-muted-foreground" />
+                                                <Users className="w-3.5 h-3.5 text-slate-400" />
                                                 {c._count?.patients ?? 0}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-center">
-                                            <Badge variant="outline" className="font-black border-primary/20 text-primary">
+                                            <Badge variant="outline" className="text-[10px] font-bold border-[#080e1e]/20 text-[#080e1e] px-2 py-0.5 rounded-full">
                                                 {c._count?.workflows ?? 0}
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className={`${statusColor(c.status)} text-[10px] uppercase font-bold tracking-widest`}>
+                                            <Badge className={`${statusColor(c.status)} text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full`}>
                                                 {c.status || 'Active'}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-right pr-6">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger
                                                     render={
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-[#080e1e] hover:text-white">
                                                             <MoreHorizontal className="w-4 h-4" />
                                                         </Button>
                                                     }
                                                 />
-                                                <DropdownMenuContent align="end" className="w-[160px]">
-                                                    <DropdownMenuItem className="gap-2" onClick={() => router.push(`/dashboard/clinics/${c.id}`)}>
-                                                        <Eye className="w-4 h-4" /> View Patients
+                                                <DropdownMenuContent align="end" className="w-[170px] bg-white border-[#ded8c4] rounded-xl shadow-lg">
+                                                    <DropdownMenuItem className="gap-2 text-xs font-bold text-[#080e1e]" onClick={() => router.push(`/dashboard/clinics/${c.id}`)}>
+                                                        <Eye className="w-4 h-4 text-[#cbb28d]" /> View Patients
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuSeparator className="bg-[#e6e0ce]" />
                                                     <DropdownMenuItem
-                                                        className="gap-2 text-destructive focus:text-destructive"
+                                                        className="gap-2 text-xs font-bold text-rose-600 focus:text-rose-700"
                                                         onClick={() => { setSelectedClinic(c); setIsDisableModalOpen(true); }}
                                                     >
                                                         <UserMinus className="w-4 h-4" /> {c.status === 'Inactive' ? 'Re-enable Clinic' : 'Disable Clinic'}
@@ -234,35 +236,35 @@ export default function AllClinicsPage() {
                         </Table>
                     )}
                     {!loading && filteredClinics.length === 0 && (
-                        <div className="p-12 text-center flex flex-col items-center gap-4">
-                            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-                                <Building2 className="w-8 h-8 text-muted-foreground" />
+                        <div className="p-12 text-center flex flex-col items-center gap-3">
+                            <div className="w-12 h-12 bg-[#e4dec3]/40 rounded-full flex items-center justify-center text-[#080e1e]">
+                                <Building2 className="w-6 h-6" />
                             </div>
-                            <p className="font-bold text-lg">No clinics found.</p>
-                            <p className="text-muted-foreground text-sm">Try adjusting your search or filters.</p>
+                            <p className="font-bold text-[#080e1e]">No clinics found.</p>
+                            <p className="text-slate-500 text-xs">Try adjusting your search criteria or status filter.</p>
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            {/* Disable confirm */}
+            {/* Disable Confirm Modal */}
             <Dialog open={isDisableModalOpen} onOpenChange={setIsDisableModalOpen}>
-                <DialogContent>
+                <DialogContent className="bg-white border-[#e4dec3] rounded-3xl">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-destructive">
-                            <AlertCircle className="w-5 h-5" /> Confirm Action
+                        <DialogTitle className="flex items-center gap-2 text-rose-700 font-bold">
+                            <AlertCircle className="w-5 h-5" /> Confirm Account Action
                         </DialogTitle>
-                        <DialogDescription className="pt-2">
+                        <DialogDescription className="pt-2 text-xs text-slate-600">
                             {selectedClinic?.status === 'Inactive'
-                                ? <>Are you sure you want to re-enable <strong>{selectedClinic?.name}</strong>? Clinic users will regain access to the portal.</>
-                                : <>Are you sure you want to disable <strong>{selectedClinic?.name}</strong>? All associated clinic users will lose access to the portal.</>
+                                ? <>Are you sure you want to re-enable <strong>{selectedClinic?.name}</strong>? Clinic staff will regain portal access.</>
+                                : <>Are you sure you want to disable <strong>{selectedClinic?.name}</strong>? Associated clinic staff will lose access immediately.</>
                             }
                         </DialogDescription>
                     </DialogHeader>
-                    <DialogFooter className="gap-2">
-                        <Button variant="outline" onClick={() => setIsDisableModalOpen(false)} disabled={disabling}>Cancel</Button>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button variant="outline" className="border-[#ded8c4] text-xs font-bold rounded-full" onClick={() => setIsDisableModalOpen(false)} disabled={disabling}>Cancel</Button>
                         <Button
-                            variant="destructive"
+                            className="bg-[#080e1e] hover:bg-rose-700 text-white font-bold text-xs rounded-full"
                             disabled={disabling}
                             onClick={async () => {
                                 if (!selectedClinic) return;
@@ -294,18 +296,20 @@ export default function AllClinicsPage() {
     );
 }
 
-function SummaryCard({ title, value, icon: Icon, color }: any) {
+function SummaryCard({ title, value, icon: Icon }: any) {
     return (
-        <Card className="border-none shadow-sm">
-            <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                    <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{title}</p>
-                    <p className="text-2xl font-black mt-1">{value}</p>
+        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
+                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                        <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
                 </div>
-                <div className="p-2 bg-muted/50 rounded-lg">
-                    <Icon className={`w-5 h-5 ${color}`} />
-                </div>
-            </CardContent>
+            </div>
+            <div>
+                <p className="text-3xl font-extrabold text-slate-900">{value}</p>
+            </div>
         </Card>
     );
 }

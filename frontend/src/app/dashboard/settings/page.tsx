@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +18,8 @@ import axios from 'axios';
 const API = '/api/v1';
 
 const getRoleBadge = (role: string) => {
-    if (role === 'ADMIN') return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (role === 'ADMIN') return 'bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30 font-bold';
+    return 'bg-emerald-950/20 text-emerald-900 border border-emerald-900/30';
 };
 
 const getRoleLabel = (role: string) => {
@@ -60,7 +60,7 @@ export default function SettingsPage() {
         if (!isAdmin) { setLoadingUsers(false); return; }
         axios.get(`${API}/users`, { headers: authHeader })
             .then(res => setAllUsers(res.data))
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoadingUsers(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAdmin]);
@@ -107,55 +107,59 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 max-w-full overflow-hidden">
+        <div className="space-y-8 animate-in fade-in duration-500 max-w-full overflow-hidden pb-8">
+            {/* Header */}
             <div>
-                <h1 className="text-3xl font-extrabold tracking-tight text-primary">Settings</h1>
-                <p className="text-muted-foreground mt-1 text-sm font-medium">
-                    {isAdmin ? 'Manage platform users and your account profile.' : 'Manage your account profile and password.'}
+                <span className="text-[10px] font-mono tracking-[0.25em] text-[#8c7657] uppercase font-bold block mb-1">
+
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#080e1e]">
+                    Platform Settings
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">
+                    {isAdmin ? '' : 'Manage physician profile details and security credentials.'}
                 </p>
             </div>
 
             <Tabs defaultValue={isAdmin ? 'users' : 'profile'} className="w-full">
-                <TabsList className="bg-muted/50 p-1 h-auto">
+                <TabsList className="bg-white/10 p-1 rounded-full border border-white/20 inline-flex shadow-xs">
                     {isAdmin && (
-                        <TabsTrigger value="users" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                            <Users className="w-4 h-4" /> User Management
+                        <TabsTrigger value="users" className="gap-2 text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                            <Users className="w-3.5 h-3.5" /> User Management
                         </TabsTrigger>
                     )}
-                    <TabsTrigger value="profile" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                        <User className="w-4 h-4" /> My Profile
+                    <TabsTrigger value="profile" className="gap-2 text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                        <User className="w-3.5 h-3.5" /> My Profile
                     </TabsTrigger>
                 </TabsList>
 
-                {/* ─── User Management Tab (Admin only) ─── */}
+                {/* User Management Tab */}
                 {isAdmin && (
                     <TabsContent value="users" className="mt-6 space-y-6">
-                        {/* Stats */}
                         <div className="grid gap-4 sm:grid-cols-3">
-                            <StatCard title="Total Users" value={totalUsers} color="text-primary" />
-                            <StatCard title="Frigo Admins" value={adminUsers} color="text-indigo-500" />
-                            <StatCard title="Clinic Staff" value={clinicStaff} color="text-emerald-500" />
+                            <SummaryCard title="Total Platform Users" value={totalUsers} icon={Users} />
+                            <SummaryCard title="Frigo Admins" value={adminUsers} icon={Shield} />
+                            <SummaryCard title="Clinic Staff Users" value={clinicStaff} icon={Building2} />
                         </div>
 
-                        {/* User Table */}
-                        <Card className="border-none shadow-sm overflow-hidden">
-                            <CardHeader className="bg-muted/10 border-b py-3">
+                        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden">
+                            <CardHeader className="bg-white/60 border-b border-[#e6e0ce] py-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <CardTitle className="text-sm font-bold flex items-center gap-2">
-                                        <Users className="w-4 h-4 text-primary" /> All Users
+                                    <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
+                                        <Users className="w-4 h-4 text-[#cbb28d]" /> Authorized Portal Users
                                     </CardTitle>
                                     <div className="flex items-center gap-2">
                                         <div className="relative">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                                             <Input
-                                                placeholder="Search users…"
-                                                className="pl-9 h-8 text-sm w-48"
+                                                placeholder="Search user name or email..."
+                                                className="pl-9 h-9 text-xs w-56 bg-white border-[#ded8c4] rounded-full focus:border-[#080e1e]"
                                                 value={userSearch}
                                                 onChange={e => setUserSearch(e.target.value)}
                                             />
                                         </div>
                                         {userSearch && (
-                                            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => setUserSearch('')}>
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-500 rounded-full" onClick={() => setUserSearch('')}>
                                                 <RotateCcw className="w-3.5 h-3.5" />
                                             </Button>
                                         )}
@@ -164,47 +168,47 @@ export default function SettingsPage() {
                             </CardHeader>
                             <CardContent className="p-0">
                                 <Table>
-                                    <TableHeader className="bg-muted/30 border-b">
-                                        <TableRow className="hover:bg-transparent">
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider">Name</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider">Email</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider">Role</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider">Assigned Clinic</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider">Joined</TableHead>
+                                    <TableHeader className="bg-[#f2ede0]/80 border-b border-[#e6e0ce]">
+                                        <TableRow>
+                                            <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Name</TableHead>
+                                            <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Email Address</TableHead>
+                                            <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Role</TableHead>
+                                            <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Assigned Clinic</TableHead>
+                                            <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Joined Date</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {loadingUsers ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground animate-pulse">Loading users…</TableCell>
+                                                <TableCell colSpan={5} className="h-32 text-center text-slate-500 italic text-xs">Loading users…</TableCell>
                                             </TableRow>
                                         ) : filteredUsers.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">No users found.</TableCell>
+                                                <TableCell colSpan={5} className="h-32 text-center text-slate-500 italic text-xs">No users found matching query.</TableCell>
                                             </TableRow>
                                         ) : filteredUsers.map(u => (
-                                            <TableRow key={u.id} className="hover:bg-muted/20 transition-colors">
-                                                <TableCell className="font-bold text-primary">{u.name}</TableCell>
-                                                <TableCell className="text-xs text-muted-foreground flex items-center gap-1">
-                                                    <Mail className="w-3 h-3" /> {u.email}
+                                            <TableRow key={u.id} className="hover:bg-[#f3eee0] transition-colors border-b border-[#e6e0ce]">
+                                                <TableCell className="font-bold text-xs text-[#080e1e]">{u.name}</TableCell>
+                                                <TableCell className="text-xs text-slate-600 font-medium flex items-center gap-1.5 pt-3">
+                                                    <Mail className="w-3 h-3 text-[#cbb28d]" /> {u.email}
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline" className={`${getRoleBadge(u.role)} text-[10px] font-bold border`}>
+                                                    <Badge className={`${getRoleBadge(u.role)} text-[10px] px-2.5 py-0.5 rounded-full`}>
                                                         {getRoleLabel(u.role)}
                                                     </Badge>
                                                 </TableCell>
-                                                <TableCell className="text-xs">
+                                                <TableCell className="text-xs text-slate-700 font-medium">
                                                     {u.clinic ? (
-                                                        <span className="flex items-center gap-1">
-                                                            <Building2 className="w-3 h-3 text-muted-foreground" /> {u.clinic.name}
+                                                        <span className="flex items-center gap-1.5">
+                                                            <Building2 className="w-3.5 h-3.5 text-[#cbb28d]" /> {u.clinic.name}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-muted-foreground flex items-center gap-1">
-                                                            <Shield className="w-3 h-3" /> Frigo Labs (All Clinics)
+                                                        <span className="text-slate-500 flex items-center gap-1.5">
+                                                            <Shield className="w-3.5 h-3.5 text-[#cbb28d]" /> Frigo HQ (All Clinics)
                                                         </span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">
+                                                <TableCell className="text-xs text-slate-500 font-mono">
                                                     {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                 </TableCell>
                                             </TableRow>
@@ -216,33 +220,31 @@ export default function SettingsPage() {
                     </TabsContent>
                 )}
 
-                {/* ─── Profile Tab ─── */}
+                {/* Profile Tab */}
                 <TabsContent value="profile" className="mt-6">
                     <div className="grid gap-6 md:grid-cols-2 max-w-4xl">
-
-                        {/* Profile Info */}
-                        <Card className="border-none shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <User className="w-4 h-4 text-primary" /> Profile Information
+                        {/* Profile Details */}
+                        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden">
+                            <CardHeader className="bg-white/60 border-b border-[#e6e0ce] flex flex-row items-center justify-between py-4">
+                                <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
+                                    <User className="w-4 h-4 text-[#cbb28d]" /> Profile Details
                                 </CardTitle>
                                 {!editing && (
-                                    <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs"
+                                    <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs font-bold text-[#080e1e] hover:bg-[#080e1e] hover:text-white rounded-full"
                                         onClick={() => { setEditing(true); setProfileSuccess(''); setProfileError(''); setName(user?.name || ''); setEmail(user?.email || ''); }}>
-                                        <Pencil className="w-3.5 h-3.5" /> Edit
+                                        <Pencil className="w-3.5 h-3.5 text-[#cbb28d]" /> Edit
                                     </Button>
                                 )}
                             </CardHeader>
-                            <CardContent className="space-y-5">
-                                {/* Avatar */}
-                                <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
-                                    <div className="w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center text-xl font-black text-primary border-2 border-primary/20">
+                            <CardContent className="p-6 space-y-5">
+                                <div className="flex items-center gap-4 p-4 bg-white border border-[#ded8c4] rounded-2xl">
+                                    <div className="w-12 h-12 rounded-full bg-[#080e1e] text-[#cbb28d] flex items-center justify-center text-lg font-extrabold border border-[#cbb28d]/30">
                                         {(user?.name)?.[0]?.toUpperCase() || 'U'}
                                     </div>
                                     <div>
-                                        <p className="font-bold text-lg">{user?.name}</p>
-                                        <p className="text-xs text-muted-foreground">{user?.email}</p>
-                                        <Badge variant="outline" className={`${getRoleBadge(user?.role)} text-[10px] font-bold border mt-1`}>
+                                        <p className="font-bold text-sm text-[#080e1e]">{user?.name}</p>
+                                        <p className="text-xs text-slate-500 font-mono">{user?.email}</p>
+                                        <Badge className={`${getRoleBadge(user?.role)} text-[10px] px-2.5 py-0.5 rounded-full mt-1`}>
                                             {getRoleLabel(user?.role)}
                                         </Badge>
                                     </div>
@@ -251,52 +253,53 @@ export default function SettingsPage() {
                                 {editing ? (
                                     <div className="space-y-4">
                                         <FormField label="Full Name">
-                                            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" />
+                                            <Input className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" />
                                         </FormField>
                                         <FormField label="Email Address">
-                                            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
+                                            <Input className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
                                         </FormField>
-                                        {profileError && <p className="text-sm text-destructive">{profileError}</p>}
+                                        {profileError && <p className="text-xs font-bold text-rose-700">{profileError}</p>}
                                         <div className="flex gap-2 pt-1">
-                                            <Button onClick={handleSaveProfile} disabled={saving} className="gap-2 flex-1">
-                                                <Check className="w-4 h-4" /> {saving ? 'Saving…' : 'Save Changes'}
+                                            <Button onClick={handleSaveProfile} disabled={saving} className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full flex-1 gap-2">
+                                                <Check className="w-4 h-4 text-[#cbb28d]" /> {saving ? 'Saving…' : 'Save Changes'}
                                             </Button>
-                                            <Button variant="outline" onClick={() => { setEditing(false); setProfileError(''); }} disabled={saving} className="gap-2">
+                                            <Button variant="outline" onClick={() => { setEditing(false); setProfileError(''); }} disabled={saving} className="border-[#ded8c4] text-xs font-bold rounded-full gap-2">
                                                 <X className="w-4 h-4" /> Cancel
                                             </Button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="space-y-0 divide-y text-sm">
-                                        {profileSuccess && <p className="text-sm text-emerald-600 font-medium pb-3">{profileSuccess}</p>}
+                                    <div className="space-y-0 divide-y divide-[#e6e0ce] text-xs">
+                                        {profileSuccess && <p className="text-xs text-emerald-700 font-bold pb-2">{profileSuccess}</p>}
                                         <InfoRow label="Full Name" value={user?.name} />
-                                        <InfoRow label="Email" value={user?.email} />
-                                        <InfoRow label="Role" value={getRoleLabel(user?.role)} />
-                                        {user?.clinic_id ? null : <InfoRow label="Organization" value="Frigo Labs" />}
+                                        <InfoRow label="Email Address" value={user?.email} />
+                                        <InfoRow label="Role Designation" value={getRoleLabel(user?.role)} />
+                                        {user?.clinic_id ? null : <InfoRow label="Organization" value="Frigo Flow HQ" />}
                                     </div>
                                 )}
                             </CardContent>
                         </Card>
 
-                        {/* Change Password */}
-                        <Card className="border-none shadow-sm self-start">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <Lock className="w-4 h-4 text-primary" /> Change Password
+                        {/* Password Management */}
+                        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden self-start">
+                            <CardHeader className="bg-white/60 border-b border-[#e6e0ce] py-4">
+                                <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
+                                    <Lock className="w-4 h-4 text-[#cbb28d]" /> Security & Password
                                 </CardTitle>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="p-6">
                                 <form onSubmit={handleChangePassword} className="space-y-4">
                                     <FormField label="Current Password">
                                         <div className="relative">
                                             <Input
                                                 type={showCurrent ? 'text' : 'password'}
                                                 placeholder="••••••••"
+                                                className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl pr-10"
                                                 value={currentPw}
                                                 onChange={e => setCurrentPw(e.target.value)}
                                                 required
                                             />
-                                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowCurrent(v => !v)}>
+                                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" onClick={() => setShowCurrent(v => !v)}>
                                                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                             </button>
                                         </div>
@@ -306,22 +309,23 @@ export default function SettingsPage() {
                                             <Input
                                                 type={showNew ? 'text' : 'password'}
                                                 placeholder="Min. 6 characters"
+                                                className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl pr-10"
                                                 value={newPw}
                                                 onChange={e => setNewPw(e.target.value)}
                                                 required
                                             />
-                                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowNew(v => !v)}>
+                                            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" onClick={() => setShowNew(v => !v)}>
                                                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                             </button>
                                         </div>
                                     </FormField>
                                     <FormField label="Confirm New Password">
-                                        <Input type="password" placeholder="Re-enter new password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} required />
+                                        <Input type="password" placeholder="Re-enter new password" className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} required />
                                     </FormField>
-                                    {pwError && <p className="text-sm text-destructive font-medium">{pwError}</p>}
-                                    {pwSuccess && <p className="text-sm text-emerald-600 font-medium">{pwSuccess}</p>}
-                                    <Button type="submit" className="w-full gap-2" disabled={savingPw}>
-                                        <Save className="w-4 h-4" /> {savingPw ? 'Updating…' : 'Update Password'}
+                                    {pwError && <p className="text-xs text-rose-700 font-bold">{pwError}</p>}
+                                    {pwSuccess && <p className="text-xs text-emerald-700 font-bold">{pwSuccess}</p>}
+                                    <Button type="submit" className="w-full bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full h-10 gap-2" disabled={savingPw}>
+                                        <Save className="w-4 h-4 text-[#cbb28d]" /> {savingPw ? 'Updating…' : 'Update Password'}
                                     </Button>
                                 </form>
                             </CardContent>
@@ -333,21 +337,28 @@ export default function SettingsPage() {
     );
 }
 
-function StatCard({ title, value, color }: any) {
+function SummaryCard({ title, value, icon: Icon }: any) {
     return (
-        <Card className="border-none shadow-sm">
-            <CardContent className="p-4">
-                <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{title}</p>
-                <p className={`text-2xl font-black mt-1 ${color}`}>{value}</p>
-            </CardContent>
+        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
+                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                        <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
+                </div>
+            </div>
+            <div>
+                <p className="text-3xl font-extrabold text-slate-900">{value}</p>
+            </div>
         </Card>
     );
 }
 
 function FormField({ label, children }: any) {
     return (
-        <div className="space-y-1.5">
-            <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">{label}</Label>
+        <div className="space-y-1">
+            <label className="text-[10px] font-mono font-bold uppercase text-[#8c7657] tracking-wider">{label}</label>
             {children}
         </div>
     );
@@ -356,8 +367,8 @@ function FormField({ label, children }: any) {
 function InfoRow({ label, value }: { label: string; value?: string }) {
     return (
         <div className="flex justify-between items-center py-2.5">
-            <span className="text-xs text-muted-foreground font-medium">{label}</span>
-            <span className="text-sm font-bold">{value || '—'}</span>
+            <span className="text-xs text-slate-500 font-medium">{label}</span>
+            <span className="text-xs font-bold text-[#080e1e]">{value || '—'}</span>
         </div>
     );
 }

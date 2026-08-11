@@ -11,9 +11,9 @@ export default function RootPage() {
   useEffect(() => {
     if (!isLoading) {
       if (user) {
-        router.replace('/dashboard');
+        window.location.href = '/dashboard';
       } else {
-        router.replace('/login');
+        window.location.href = '/login';
       }
     }
   }, [user, isLoading, router]);

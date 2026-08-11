@@ -24,6 +24,8 @@ import {
     Activity,
     FlaskConical,
     ClipboardList,
+    PhoneCall,
+    CalendarPlus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -46,17 +48,6 @@ const WORKFLOW_STATUSES = [
     { key: 'LAB_PROCESSING', label: 'Lab Processing' },
     { key: 'RESULTS_READY', label: 'Results Ready' },
     { key: 'COMPLETED', label: 'Completed' },
-];
-
-const DIAGNOSTIC_STAGES = [
-    { key: "PATIENT_CREATED", label: "Patient Created" },
-    { key: "TEST_PACKAGE_SELECTED", label: "Test Package Selected" },
-    { key: "TASSO_INSTRUCTIONS_SENT", label: "Instructions Sent" },
-    { key: "KIT_SHIPPED", label: "Kit Shipped" },
-    { key: "SAMPLE_COLLECTED", label: "Sample Collected" },
-    { key: "LAB_PROCESSING", label: "Lab Processing" },
-    { key: "RESULTS_READY", label: "Results Ready" },
-    { key: "COMPLETED", label: "Completed" },
 ];
 
 export default function PatientDetailsPage() {
@@ -92,160 +83,129 @@ export default function PatientDetailsPage() {
         return patient?.workflows?.[0];
     }, [patient]);
 
-    const currentStageIndex = useMemo(() => {
-        if (!activeWorkflow) return -1;
-        return DIAGNOSTIC_STAGES.findIndex(s => s.key === activeWorkflow.status);
-    }, [activeWorkflow]);
-
     if (loading) return (
         <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-500">
-            <div className="flex items-center gap-4">
-                <Skeleton className="h-8 w-20" />
-                <Skeleton className="h-4 w-px" />
-                <Skeleton className="h-5 w-36" />
-            </div>
-            <div className="bg-white p-8 rounded-3xl border flex items-center gap-5">
-                <Skeleton className="w-20 h-20 rounded-2xl shrink-0" />
-                <div className="flex-1 space-y-3">
-                    <Skeleton className="h-8 w-64" />
-                    <div className="flex gap-4">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-4 w-40" />
-                        <Skeleton className="h-4 w-28" />
-                    </div>
-                </div>
-                <div className="space-y-2">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-8 w-36 rounded-full" />
-                </div>
-            </div>
-            <Skeleton className="h-48 w-full rounded-3xl" />
-            <div className="space-y-4">
-                <Skeleton className="h-12 w-[450px] rounded-xl" />
-                <Skeleton className="h-64 w-full rounded-2xl" />
-            </div>
+            <Skeleton className="h-10 w-48 rounded-full bg-[#e4dec3]/50" />
+            <Skeleton className="h-64 w-full rounded-3xl bg-white shadow-xs" />
         </div>
     );
-    if (!patient) return <div className="p-8 text-destructive">Diagnostic record not found.</div>;
+    if (!patient) return <div className="p-8 text-rose-700 font-bold">Diagnostic record not found.</div>;
+
+    const mockPatientId = `ID ${1000000 + (parseInt(patient.id.slice(-4), 16) || 4762391)}`;
 
     return (
-        <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-500 pb-8">
             {/* Navigation Header */}
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" size="sm" onClick={() => router.back()}>
-                    <ChevronLeft className="w-4 h-4 mr-1" /> Back
-                </Button>
-                <div className="h-4 w-px bg-border mx-2" />
-                <h2 className="text-xl font-bold text-primary">Patient Journey</h2>
-            </div>
-
-            {/* Patient Header Section */}
-            <div className="bg-white p-8 rounded-3xl border border-border shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="flex items-center gap-5">
-                    <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center text-3xl font-bold text-primary border border-primary/20">
-                        {patient.first_name[0]}{patient.last_name[0]}
-                    </div>
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tighter text-slate-900 border-b-4 border-primary/40 inline-block mb-2">
-                            {patient.first_name} {patient.last_name}
-                        </h1>
-                        <div className="flex flex-wrap gap-4 text-sm text-slate-500 font-medium">
-                            <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4" /> {patient.dob ? new Date(patient.dob).toLocaleDateString() : 'N/A'} (DOB)</span>
-                            <span className="flex items-center gap-1.5"><Mail className="w-4 h-4" /> {patient.email || 'No email provided'}</span>
-                            <span className="flex items-center gap-1.5"><Phone className="w-4 h-4" /> {patient.phone || 'No phone provided'}</span>
-                        </div>
-                    </div>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => router.back()}
+                        className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-[#080e1e] hover:bg-slate-200 px-4 py-2 rounded-full transition-all"
+                    >
+                        <ChevronLeft className="w-4 h-4" /> Back
+                    </button>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#080e1e]">Patient Card</h1>
                 </div>
-                <div className="flex flex-col items-end gap-3">
-                    <div className="text-xs font-bold uppercase tracking-widest text-slate-400">Current Status</div>
-                    <Badge className="text-lg px-4 py-1.5 font-bold uppercase tracking-wide bg-primary/10 text-primary border-primary/30">
-                        {WORKFLOW_STATUSES.find(s => s.key === activeWorkflow?.status)?.label || activeWorkflow?.status?.replace(/_/g, ' ') || 'NO ACTIVE WORKFLOW'}
-                    </Badge>
+
+                <div className="flex items-center gap-2">
                     {user?.role === 'ADMIN' && activeWorkflow && (
-                        <div className="flex items-center gap-2">
-                            <Button
-                                size="sm"
-                                className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-                                onClick={() => alert("Send to Tasso API integration coming soon!")}
-                            >
-                                <FlaskConical className="w-4 h-4" /> Send to Tasso
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-2 border-primary/30 text-primary hover:bg-primary hover:text-white"
-                                onClick={() => { setNewStatus(activeWorkflow.status); setStatusNote(''); setIsUpdateOpen(true); }}
-                            >
-                                <ClipboardList className="w-4 h-4" /> Update Status
-                            </Button>
-                        </div>
+                        <Button
+                            size="sm"
+                            className="gap-2 bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full h-9 px-4 shadow-xs"
+                            onClick={() => { setNewStatus(activeWorkflow.status); setStatusNote(''); setIsUpdateOpen(true); }}
+                        >
+                            <ClipboardList className="w-4 h-4 text-[#cbb28d]" /> Update Workflow
+                        </Button>
                     )}
                 </div>
             </div>
 
-            {/* Workflow Timeline Section */}
-            <Card className="border-none shadow-xl bg-slate-900 text-white overflow-hidden rounded-3xl">
-                <CardHeader className="border-b border-slate-800 bg-slate-900/50">
-                    <CardTitle className="text-xl font-bold flex items-center gap-2">
-                        <Activity className="w-6 h-6 text-primary" /> Workflow Timeline
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="py-12 px-6 overflow-x-auto">
-                    <div className="relative flex justify-between min-w-[900px]">
-                        {/* Connecting Line */}
-                        <div className="absolute top-5 left-0 w-full h-1 bg-slate-800 z-0 rounded-full" />
-                        <div
-                            className="absolute top-5 left-0 h-1 bg-primary transition-all duration-1000 ease-out rounded-full z-0"
-                            style={{ width: `${(currentStageIndex / (DIAGNOSTIC_STAGES.length - 1)) * 100}%` }}
-                        />
-
-                        {DIAGNOSTIC_STAGES.map((stage, idx) => {
-                            const isCompleted = idx < currentStageIndex;
-                            const isCurrent = idx === currentStageIndex;
-                            const isPending = idx > currentStageIndex;
-
-                            return (
-                                <div key={stage.key} className="relative z-10 flex flex-col items-center gap-4 w-28 group">
-                                    <div className={cn(
-                                        "w-10 h-10 rounded-full flex items-center justify-center border-4 transition-all duration-500",
-                                        isCompleted ? "bg-primary border-primary text-slate-900 shadow-[0_0_15px_rgba(var(--primary-rgb),0.5)]" :
-                                            isCurrent ? "bg-slate-900 border-primary text-primary animate-pulse shadow-[0_0_20px_rgba(var(--primary-rgb),0.7)]" :
-                                                "bg-slate-900 border-slate-800 text-slate-600"
-                                    )}>
-                                        {isCompleted ? <CheckCircle2 className="w-6 h-6" /> :
-                                            isCurrent ? <Circle className="w-4 h-4 fill-primary" /> :
-                                                <Circle className="w-3 h-3" />}
-                                    </div>
-                                    <div className="text-center">
-                                        <p className={cn(
-                                            "text-[11px] font-black uppercase tracking-tighter transition-colors duration-500 max-w-[80px]",
-                                            isCompleted ? "text-primary" :
-                                                isCurrent ? "text-white" :
-                                                    "text-slate-600"
-                                        )}>
-                                            {stage.label}
-                                        </p>
-                                        {isCurrent && (
-                                            <div className="mt-1 h-1 w-8 bg-primary mx-auto rounded-full" />
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+            {/* Patient Hero Card */}
+            <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                    
+                    {/* Left Avatar & Quick Contact Buttons */}
+                    <div className="lg:col-span-4 flex flex-col items-center justify-center p-6 rounded-3xl bg-white/60 border border-[#e6e0ce] space-y-4">
+                        <div className="w-24 h-24 rounded-full bg-[#080e1e] text-[#cbb28d] font-extrabold text-3xl flex items-center justify-center border-4 border-[#faf8f3] shadow-md">
+                            {patient.first_name[0]}{patient.last_name[0]}
+                        </div>
+                        <div className="text-center">
+                            <h2 className="text-xl font-extrabold text-[#080e1e]">{patient.first_name} {patient.last_name}</h2>
+                            <p className="text-xs font-bold text-[#8c7657] font-mono mt-0.5">{mockPatientId}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 w-full pt-1">
+                            <a href={`tel:${patient.phone}`} className="w-full">
+                                <Button size="sm" className="w-full bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full gap-1.5 h-9">
+                                    <PhoneCall className="w-3.5 h-3.5 text-[#cbb28d]" /> Call
+                                </Button>
+                            </a>
+                            <Button size="sm" variant="outline" className="w-full bg-white border-[#ded8c4] text-[#080e1e] font-bold text-xs rounded-full gap-1.5 h-9" onClick={() => alert('Appointment schedule feature coming soon!')}>
+                                <CalendarPlus className="w-3.5 h-3.5" /> Schedule
+                            </Button>
+                        </div>
                     </div>
-                </CardContent>
+
+                    {/* Right Key Patient Metrics Grid */}
+                    <div className="lg:col-span-8 space-y-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <span className="text-xs font-bold text-[#8c7657] font-mono block">{mockPatientId}</span>
+                                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#080e1e]">{patient.first_name} {patient.last_name}</h1>
+                            </div>
+                            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30">
+                                {WORKFLOW_STATUSES.find(s => s.key === activeWorkflow?.status)?.label || activeWorkflow?.status?.replace(/_/g, ' ') || 'Active Under Treatment'}
+                            </span>
+                        </div>
+
+                        {/* Metric Columns */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-white/60 border border-[#e6e0ce] text-center sm:text-left">
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Gender</span>
+                                <span className="text-sm font-bold text-[#080e1e]">Female</span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Age</span>
+                                <span className="text-sm font-bold text-[#080e1e]">34</span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Primary Diagnosis</span>
+                                <span className="text-sm font-bold text-[#080e1e]">{activeWorkflow?.test_type || 'Hypertension'}</span>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Last Visit</span>
+                                <span className="text-sm font-bold text-[#080e1e]">{new Date(patient.created_at).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+
+                        {/* Status Note Pill */}
+                        <div className="p-3 rounded-2xl bg-white border border-[#ded8c4] text-xs font-medium text-[#080e1e] flex items-center justify-between">
+                            <span>Patient shows steady biometric progress with current treatment plan.</span>
+                            <ChevronLeft className="w-4 h-4 rotate-180 text-[#8c7657]" />
+                        </div>
+                    </div>
+
+                </div>
             </Card>
 
             {/* Main Tabs Container */}
-            <Tabs defaultValue="vitals" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-4 lg:w-[620px] h-12 bg-white border border-border rounded-xl p-1">
-                    <TabsTrigger value="vitals" className="rounded-lg font-bold text-xs uppercase tracking-wider"><Activity className="w-4 h-4 mr-2" /> Vitals & Devices</TabsTrigger>
-                    <TabsTrigger value="history" className="rounded-lg font-bold text-xs uppercase tracking-wider"><HistoryIcon className="w-4 h-4 mr-2" /> Status History</TabsTrigger>
-                    <TabsTrigger value="results" className="rounded-lg font-bold text-xs uppercase tracking-wider"><FlaskConical className="w-4 h-4 mr-2" /> Lab Results</TabsTrigger>
-                    <TabsTrigger value="notes" className="rounded-lg font-bold text-xs uppercase tracking-wider"><FileText className="w-4 h-4 mr-2" /> Physician Notes</TabsTrigger>
+            <Tabs defaultValue="vitals" className="space-y-6">
+                <TabsList className="bg-white/10 p-1 rounded-full border border-white/20 inline-flex shadow-xs">
+                    <TabsTrigger value="vitals" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                        Vitals & Telemetry
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                        Status History
+                    </TabsTrigger>
+                    <TabsTrigger value="results" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                        Lab Reports
+                    </TabsTrigger>
+                    <TabsTrigger value="notes" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                        Physician Notes
+                    </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="vitals" className="animate-in fade-in-50 duration-500">
+                {/* Vitals Tab */}
+                <TabsContent value="vitals" className="animate-in fade-in duration-300">
                     <VitalsDashboard
                         patientId={patient.id}
                         patientName={`${patient.first_name} ${patient.last_name}`}
@@ -254,37 +214,38 @@ export default function PatientDetailsPage() {
                     />
                 </TabsContent>
 
-                <TabsContent value="history" className="animate-in fade-in-50 duration-500">
-                    <Card className="border-none shadow-md overflow-hidden rounded-2xl">
-                        <CardHeader className="bg-slate-50/50 border-b">
-                            <CardTitle className="text-lg">Status & Milestone Tracking</CardTitle>
+                {/* History Tab */}
+                <TabsContent value="history" className="animate-in fade-in duration-300">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] overflow-hidden">
+                        <CardHeader className="border-b border-[#e6e0ce] bg-white/60">
+                            <CardTitle className="text-base font-bold text-[#080e1e]">Status History Log</CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
                             <Table>
-                                <TableHeader className="bg-slate-50/30">
+                                <TableHeader className="bg-[#f2ede0]/80 border-b border-[#e6e0ce]">
                                     <TableRow>
-                                        <TableHead className="font-bold text-[10px] uppercase">New Status</TableHead>
-                                        <TableHead className="font-bold text-[10px] uppercase">Updated By</TableHead>
-                                        <TableHead className="font-bold text-[10px] uppercase text-right">Date & Time</TableHead>
+                                        <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Status</TableHead>
+                                        <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Updated By</TableHead>
+                                        <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-right">Date & Time</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {activeWorkflow?.history.map((h: any) => (
-                                        <TableRow key={h.id}>
+                                        <TableRow key={h.id} className="border-b border-[#e6e0ce] hover:bg-[#f3eee0]">
                                             <TableCell>
-                                                <Badge variant="outline" className="font-bold uppercase tracking-tighter border-primary/20 bg-primary/5 text-primary">
+                                                <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#080e1e] text-[#cbb28d]">
                                                     {h.status.replace(/_/g, ' ')}
-                                                </Badge>
+                                                </span>
                                             </TableCell>
-                                            <TableCell className="text-sm font-medium">{h.user.name}</TableCell>
-                                            <TableCell className="text-right text-xs text-muted-foreground">
+                                            <TableCell className="text-xs font-bold text-[#080e1e]">{h.user.name}</TableCell>
+                                            <TableCell className="text-right text-xs text-slate-500 font-mono">
                                                 {new Date(h.created_at).toLocaleString()}
                                             </TableCell>
                                         </TableRow>
                                     ))}
                                     {!activeWorkflow?.history.length && (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="h-24 text-center text-muted-foreground italic">No status history available.</TableCell>
+                                            <TableCell colSpan={3} className="h-24 text-center text-slate-500 italic text-xs">No status history logged.</TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>
@@ -293,88 +254,69 @@ export default function PatientDetailsPage() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="results" className="animate-in fade-in-50 duration-500">
-                    <Card className="border-none shadow-md overflow-hidden rounded-2xl">
-                        <CardHeader className="bg-slate-50/50 border-b flex flex-row items-center justify-between">
-                            <CardTitle className="text-lg">Diagnostic Reports (PDF)</CardTitle>
-                            {user?.role === 'ADMIN' && (
-                                <Button size="sm" className="bg-secondary hover:bg-secondary/90"><FileUp className="w-4 h-4 mr-2" /> Upload New Result</Button>
-                            )}
-                        </CardHeader>
-                        <CardContent className="p-6">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                {activeWorkflow?.results.map((res: any) => (
-                                    <div key={res.id} className="flex items-center justify-between p-4 border rounded-xl hover:border-primary/50 transition-colors bg-white hover:bg-slate-50 group">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-rose-50 text-rose-500 rounded-lg group-hover:bg-rose-100 transition-colors">
-                                                <FileText className="w-6 h-6" />
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-sm text-slate-800">Lab Result Report</div>
-                                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{new Date(res.uploaded_at).toLocaleDateString()}</div>
-                                            </div>
+                {/* Lab Results Tab */}
+                <TabsContent value="results" className="animate-in fade-in duration-300">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-base font-bold text-[#080e1e]">Diagnostic Reports</h3>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {activeWorkflow?.results.map((res: any) => (
+                                <div key={res.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/60 border border-[#e6e0ce]">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 rounded-xl bg-[#080e1e] text-[#cbb28d]">
+                                            <FileText className="w-5 h-5" />
                                         </div>
-                                        <Button variant="ghost" size="icon" className="text-primary" onClick={() => window.open(res.file_url)}>
-                                            <Download className="w-5 h-5" />
-                                        </Button>
+                                        <div>
+                                            <p className="text-xs font-bold text-[#080e1e]">Diagnostic Lab Report</p>
+                                            <p className="text-[10px] text-slate-500">{new Date(res.uploaded_at).toLocaleDateString()}</p>
+                                        </div>
                                     </div>
-                                ))}
-                                {!activeWorkflow?.results.length && (
-                                    <div className="md:col-span-2 flex flex-col items-center justify-center p-12 text-muted-foreground border-2 border-dashed rounded-3xl bg-slate-50/50">
-                                        <FlaskConical className="w-12 h-12 mb-4 opacity-20" />
-                                        <p className="font-medium">No lab results found for this workflow.</p>
-                                        <p className="text-xs">Results will appear here once the lab process is complete.</p>
-                                    </div>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                <TabsContent value="notes" className="animate-in fade-in-50 duration-500">
-                    <Card className="border-none shadow-md overflow-hidden rounded-2xl">
-                        <CardHeader className="bg-slate-50/50 border-b">
-                            <CardTitle className="text-lg">Internal Physician Notes</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-6">
-                            <div className="space-y-4">
-                                <textarea
-                                    className="w-full min-h-[200px] p-4 rounded-xl border border-border focus:ring-2 focus:ring-primary/20 outline-hidden transition-all text-sm font-medium"
-                                    placeholder="Add specialized diagnostic notes for this patient journey..."
-                                />
-                                <div className="flex justify-end">
-                                    <Button className="bg-slate-900 font-bold">Save Physician Notes</Button>
+                                    <Button variant="ghost" size="icon" className="text-[#080e1e] hover:bg-white rounded-full" onClick={() => window.open(res.file_url)}>
+                                        <Download className="w-4 h-4 text-[#cbb28d]" />
+                                    </Button>
                                 </div>
-                            </div>
-                        </CardContent>
+                            ))}
+                            {!activeWorkflow?.results.length && (
+                                <div className="md:col-span-2 p-12 text-center text-slate-500 text-xs italic">
+                                    No lab result files attached.
+                                </div>
+                            )}
+                        </div>
                     </Card>
                 </TabsContent>
 
+                {/* Physician Notes Tab */}
+                <TabsContent value="notes" className="animate-in fade-in duration-300">
+                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
+                        <h3 className="text-base font-bold text-[#080e1e]">Physician Notes</h3>
+                        <textarea
+                            className="w-full min-h-[160px] p-4 rounded-2xl bg-white border border-[#ded8c4] text-xs font-medium text-[#080e1e] focus:border-[#080e1e] outline-none"
+                            placeholder="Type internal diagnostic notes here..."
+                        />
+                        <div className="flex justify-end">
+                            <Button className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full px-6 h-10 shadow-xs">
+                                Save Notes
+                            </Button>
+                        </div>
+                    </Card>
+                </TabsContent>
             </Tabs>
 
-            {/* Admin: Update Status Dialog */}
+            {/* Status Update Modal */}
             <Dialog open={isUpdateOpen} onOpenChange={setIsUpdateOpen}>
-                <DialogContent className="sm:max-w-[440px]">
+                <DialogContent className="bg-white border-[#e4dec3] rounded-3xl sm:max-w-[440px]">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <ClipboardList className="w-5 h-5 text-primary" />
-                            Update Workflow Status
-                        </DialogTitle>
-                        <DialogDescription>
-                            Manually advance the workflow for <strong>{patient.first_name} {patient.last_name}</strong>.
+                        <DialogTitle className="text-[#080e1e] font-bold">Update Workflow Stage</DialogTitle>
+                        <DialogDescription className="text-xs text-slate-600">
+                            Advance workflow stage for {patient.first_name} {patient.last_name}.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">Current Status</label>
-                            <div className="px-3 py-2 bg-muted/40 rounded-md text-sm font-medium">
-                                {WORKFLOW_STATUSES.find(s => s.key === activeWorkflow?.status)?.label || activeWorkflow?.status}
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">New Status <span className="text-destructive">*</span></label>
+                    <div className="space-y-4 py-3">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[#8c7657] uppercase">Target Status</label>
                             <select
-                                className="w-full bg-background border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 ring-primary/20"
+                                className="w-full bg-white border border-[#ded8c4] rounded-xl px-3 py-2 text-xs font-bold text-[#080e1e] outline-none"
                                 value={newStatus}
                                 onChange={e => setNewStatus(e.target.value)}
                             >
@@ -383,19 +325,12 @@ export default function PatientDetailsPage() {
                                 ))}
                             </select>
                         </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase text-muted-foreground">Note (optional)</label>
-                            <Input
-                                placeholder="Describe the update..."
-                                value={statusNote}
-                                onChange={e => setStatusNote(e.target.value)}
-                            />
-                        </div>
                     </div>
                     <DialogFooter className="gap-2">
-                        <Button variant="outline" onClick={() => setIsUpdateOpen(false)}>Cancel</Button>
+                        <Button variant="outline" className="rounded-full text-xs font-bold border-[#ded8c4]" onClick={() => setIsUpdateOpen(false)}>Cancel</Button>
                         <Button
                             disabled={saving}
+                            className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full"
                             onClick={async () => {
                                 if (!activeWorkflow?.id || !newStatus) return;
                                 setSaving(true);

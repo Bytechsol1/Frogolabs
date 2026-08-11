@@ -78,10 +78,6 @@ export default function ReportsPage() {
                     <p className="text-muted-foreground mt-1 text-sm font-medium">View clinic performance, patient workflow activity, lab result status, and operational delays.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" className="gap-2"><Download className="w-4 h-4" /> Export CSV</Button>
-                    <Button className="gap-2 bg-primary shadow-lg" onClick={() => setIsExportOpen(true)}>
-                        <FileText className="w-4 h-4" /> Export PDF
-                    </Button>
                 </div>
             </div>
 
