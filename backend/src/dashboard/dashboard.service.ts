@@ -1,108 +1,66 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { registeredClinicWhere, registeredPatientWhere, displayedTerraEnvironment, displayedWorkflowWhere, readyResultWhere } from './live-data';
+import { terraEnvironment } from '../terra/terra-environment';
+import { clinicMetricQueries } from './clinic-metrics';
 
 @Injectable()
 export class DashboardService {
     constructor(private prisma: PrismaService) { }
 
     async getAdminStats() {
-        const [clinics, patients] = await Promise.all([
-            this.prisma.clinic.count(),
-            this.prisma.patient.count(),
+        const include = { patient: true, clinic: { select: { name: true } } } as const;
+        const [totalClinics, totalPatients, activeWorkflows, completedWorkflows, resultsReady, recent, attention, telemetry, activeClinics] = await this.prisma.$transaction([
+            this.prisma.clinic.count({ where: registeredClinicWhere }),
+            this.prisma.patient.count({ where: registeredPatientWhere }),
+            this.prisma.workflow.count({ where: { ...displayedWorkflowWhere(), status: { not: 'COMPLETED' } } }),
+            this.prisma.workflow.count({ where: { ...displayedWorkflowWhere(), status: 'COMPLETED' } }),
+            this.prisma.patient.count({ where: { ...registeredPatientWhere, results: { some: readyResultWhere() } } }),
+            this.prisma.workflow.findMany({ where: { ...displayedWorkflowWhere(), status: { not: 'COMPLETED' } }, take: 5, orderBy: { updated_at: 'desc' }, include }),
+            this.prisma.workflow.findMany({ where: { ...displayedWorkflowWhere(), status: { in: ['RESULTS_READY', 'SAMPLE_COLLECTED', 'KIT_SHIPPED'] } }, take: 3, orderBy: { updated_at: 'desc' }, include }),
+            this.prisma.patient.findMany({ where: { ...registeredPatientWhere, validic_user_id: { not: null } }, take: 3, orderBy: { updated_at: 'desc' } }),
+            this.prisma.clinic.findMany({
+                // The clinic directory treats legacy missing status as Active.
+                where: { ...registeredClinicWhere, OR: [{ status: 'Active' }, { status: null }, { status: '' }] },
+                select: { id: true, name: true, contact_name: true, email: true, status: true },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
         ]);
-
-        const activeWorkflows = await this.prisma.workflow.count({
-            where: { status: { not: 'COMPLETED' as any } }
-        });
-
-        const completedWorkflows = await this.prisma.workflow.count({
-            where: { status: 'COMPLETED' as any }
-        });
-
-        const pendingResults = await this.prisma.workflow.count({
-            where: { status: { in: ['LAB_PROCESSING', 'RESULTS_READY'] as any[] } }
-        });
-
-        const recentPatients = await this.prisma.patient.findMany({
-            take: 5,
-            orderBy: { created_at: 'desc' },
-            include: { clinic: { select: { name: true } } }
-        });
-
-        const recentWorkflows = await this.prisma.workflow.findMany({
-            take: 5,
-            orderBy: { updated_at: 'desc' },
-            include: {
-                patient: { select: { first_name: true, last_name: true } },
-                clinic: { select: { name: true } }
-            }
-        });
-
-        const pendingLabWorkflows = await this.prisma.workflow.findMany({
-            where: { status: { in: ['LAB_PROCESSING', 'RESULTS_READY'] as any[] } },
-            take: 5,
-            include: {
-                patient: { select: { first_name: true, last_name: true } },
-                clinic: { select: { name: true } }
-            }
-        });
-
+        const rows = (workflows: typeof recent) => workflows.map(w => ({
+            ...w.patient, clinic: w.clinic,
+            workflows: [{ id: w.id, status: w.status, test_type: w.test_type, created_at: w.created_at, updated_at: w.updated_at }],
+        }));
         return {
-            kpi: {
-                totalClinics: clinics,
-                totalPatients: patients,
-                activeWorkflows,
-                completedWorkflows,
-                pendingResults
-            },
-            tables: {
-                recentPatients,
-                recentWorkflows,
-                pendingLabWorkflows
-            }
+            kpi: { totalClinics, totalPatients, activeWorkflows, completedWorkflows, resultsReady },
+            tables: { recentPatients: rows(recent), attentionPatients: rows(attention), telemetryPatients: telemetry, activeClinics },
+            source: { environment: terraEnvironment(), liveOnly: displayedTerraEnvironment() === 'PRODUCTION' },
+            updatedAt: new Date().toISOString(),
         };
     }
 
     async getClinicStats(clinicId: string) {
-        const [patients, workflows] = await Promise.all([
-            this.prisma.patient.count({ where: { clinic_id: clinicId } }),
-            this.prisma.workflow.findMany({
-                where: { clinic_id: clinicId },
-                include: { patient: { select: { first_name: true, last_name: true } } },
-                orderBy: { updated_at: 'desc' }
-            })
+        if (!clinicId) throw new ForbiddenException('A clinic account is required.');
+        const patientsWhere = { ...registeredPatientWhere, clinic_id: clinicId };
+        const sessionsWhere = { ...displayedWorkflowWhere(), clinic_id: clinicId };
+        const readySessionsWhere = { ...sessionsWhere, results: { some: readyResultWhere() } };
+        const [totalPatients, activeTesting, resultsReady, completedTesting, awaitingTestOrders, recentPatients] = await this.prisma.$transaction([
+            ...clinicMetricQueries(this.prisma, clinicId),
+            this.prisma.patient.findMany({
+                where: { ...patientsWhere, workflows: { some: readySessionsWhere } }, orderBy: { created_at: 'desc' },
+                select: {
+                    id: true, first_name: true, last_name: true,
+                    workflows: {
+                        where: readySessionsWhere, take: 1, orderBy: { updated_at: 'desc' },
+                        select: { id: true, status: true, test_type: true, updated_at: true },
+                    },
+                },
+            }),
         ]);
-
-        const activeTesting = workflows.filter(w => (w.status as any) !== 'COMPLETED').length;
-        const resultsReady = workflows.filter(w => (w.status as any) === 'RESULTS_READY').length;
-        const completedTesting = workflows.filter(w => (w.status as any) === 'COMPLETED').length;
-
-        const recentPatients = await this.prisma.patient.findMany({
-            where: { clinic_id: clinicId },
-            take: 5,
-            orderBy: { created_at: 'desc' }
-        });
-
-        const latestResults = workflows
-            .filter(w => (w.status as any) === 'RESULTS_READY')
-            .slice(0, 5);
-
-        const activeWorkflows = workflows
-            .filter(w => (w.status as any) !== 'COMPLETED')
-            .slice(0, 5);
-
         return {
-            kpi: {
-                totalPatients: patients,
-                activeTesting,
-                resultsReady,
-                completedTesting
-            },
-            tables: {
-                recentPatients,
-                activeWorkflows,
-                latestResults
-            }
+            kpi: { totalPatients, activeTesting, resultsReady, completedTesting, awaitingTestOrders },
+            tables: { recentPatients },
+            source: { environment: terraEnvironment(), liveOnly: displayedTerraEnvironment() === 'PRODUCTION' },
+            updatedAt: new Date().toISOString(),
         };
     }
 }

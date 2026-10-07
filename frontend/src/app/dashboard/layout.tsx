@@ -2,16 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { LabReportNotifications } from "@/components/LabReportNotifications";
 import {
     LayoutDashboard,
     Users,
     Activity,
     FlaskConical,
     Settings,
-    User,
     Building2,
     LogOut,
-    Bell,
     ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -21,7 +20,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -29,6 +27,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const { user, logout, isLoading } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+    const [showSandboxNotice, setShowSandboxNotice] = useState(false);
+
+    useEffect(() => {
+        if (!user?.token) return;
+        const controller = new AbortController();
+        fetch('/api/v1/terra/ordering/config', {
+            headers: { Authorization: `Bearer ${user.token}` }, signal: controller.signal,
+        }).then(response => response.ok ? response.json() : null)
+            .then(config => { if (!controller.signal.aborted) setShowSandboxNotice(config?.showSandboxData === true); })
+            .catch(() => {});
+        return () => controller.abort();
+    }, [user?.token]);
 
     useEffect(() => {
         if (!isLoading && !user) {
@@ -40,10 +50,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         { title: "Dashboard", url: "/dashboard", roles: ["ADMIN", "CLINIC_USER"], icon: LayoutDashboard },
         { title: "Clinics", url: "/dashboard/clinics", roles: ["ADMIN"], icon: Building2 },
         { title: "Patients", url: "/dashboard/patients", roles: ["ADMIN", "CLINIC_USER"], icon: Users },
-        { title: "Workflows", url: "/dashboard/workflows", roles: ["ADMIN", "CLINIC_USER"], icon: Activity },
+        { title: "Sessions", url: "/dashboard/workflows", roles: ["ADMIN", "CLINIC_USER"], icon: Activity },
         { title: "Lab Results", url: "/dashboard/lab-results", roles: ["ADMIN", "CLINIC_USER"], icon: FlaskConical },
-        { title: "Settings", url: "/dashboard/settings", roles: ["ADMIN"], icon: Settings },
-        { title: "My Profile", url: "/dashboard/profile", roles: ["CLINIC_USER"], icon: User },
     ];
 
     const filteredItems = menuItems.filter(item => item.roles.includes(user?.role || ''));
@@ -68,18 +76,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
         <div className="min-h-screen w-full bg-slate-50 text-[#080e1e] font-sans selection:bg-[#cbb28d]/30 selection:text-[#080e1e] pb-12">
             {/* Top Floating Navbar (Luxury Off-White & Royal Navy) */}
-            <header className="sticky top-0 z-40 w-full pt-4 px-4 sm:px-8 max-w-7xl mx-auto">
-                <div className="bg-white rounded-full px-5 py-2.5 shadow-[0_4px_25px_rgba(8,14,30,0.06)] border border-[#e4dec3]/80 flex items-center justify-between gap-4">
+            <header className="sticky top-0 z-40 w-full pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+                <div className="bg-white rounded-full px-3 sm:px-5 py-2.5 shadow-[0_4px_25px_rgba(8,14,30,0.06)] border border-[#e4dec3]/80 flex items-center justify-between gap-2 sm:gap-4">
                     
                     {/* Left Brand Logo */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                         <Link href="/dashboard" className="flex items-center group mix-blend-multiply">
-                            <img src="/logo.jpg" alt="Frigo Flow" className="h-[72px] w-auto origin-left scale-[1.3] ml-2 transition-transform group-hover:scale-105" />
+                            <img src="/logo.jpg" alt="Frigo Flow" className="h-10 sm:h-14 lg:h-[72px] w-auto max-w-[140px] sm:max-w-[200px] lg:max-w-none object-contain origin-left lg:scale-[1.3] lg:ml-2" />
                         </Link>
                     </div>
 
                     {/* Center Floating Pill Menu */}
-                    <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200">
+                    <nav className="hidden xl:flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200">
                         {filteredItems.map((item) => {
                             const active = isNavActive(item.url);
                             return (
@@ -100,10 +108,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </nav>
 
                     {/* Right User Actions & Avatar */}
-                    <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+
+                        <LabReportNotifications />
 
                         {/* Settings Button */}
                         <button
+                            type="button"
+                            aria-label="Settings"
                             onClick={() => router.push(user?.role === 'ADMIN' ? '/dashboard/settings' : '/dashboard/profile')}
                             className="w-9 h-9 rounded-full bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 text-[#080e1e] flex items-center justify-center transition-colors border border-[#ded8c4]/50"
                         >
@@ -126,15 +138,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     <p className="text-xs font-bold text-[#080e1e]">{user?.name || user?.email}</p>
                                     <p className="text-[10px] text-[#8c7657] font-bold uppercase">{user?.role?.replace('_', ' ')}</p>
                                 </div>
-                                <DropdownMenuItem className="text-xs font-bold rounded-xl gap-2 cursor-pointer mt-1 text-[#080e1e] focus:bg-slate-100 focus:text-[#080e1e]" onClick={() => router.push('/dashboard')}>
-                                    <LayoutDashboard className="w-3.5 h-3.5 text-[#cbb28d]" /> Dashboard
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="text-xs font-bold rounded-xl gap-2 cursor-pointer text-[#080e1e] focus:bg-slate-100 focus:text-[#080e1e]" onClick={() => router.push(user?.role === 'ADMIN' ? '/dashboard/settings' : '/dashboard/profile')}>
-                                    <Settings className="w-3.5 h-3.5 text-[#cbb28d]" /> Account Settings
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator className="bg-[#e6e0ce]" />
                                 <DropdownMenuItem
-                                    className="text-xs font-bold text-rose-700 focus:bg-rose-50 focus:text-rose-800 rounded-xl gap-2 cursor-pointer"
+                                    className="text-xs font-bold text-rose-700 focus:bg-rose-50 focus:text-rose-800 rounded-xl gap-2 cursor-pointer mt-1"
                                     onClick={() => {
                                         logout();
                                         router.push('/login');
@@ -148,7 +153,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
 
                 {/* Mobile Floating Menu Pills */}
-                <div className="flex md:hidden items-center gap-1 bg-white p-1.5 rounded-2xl border border-[#e4dec3] mt-2 overflow-x-auto shadow-sm">
+                <div className="flex xl:hidden items-center gap-1 bg-white p-1.5 rounded-2xl border border-[#e4dec3] mt-2 overflow-x-auto shadow-sm">
                     {filteredItems.map((item) => {
                         const active = isNavActive(item.url);
                         return (
@@ -170,7 +175,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </header>
 
             {/* Main Content Area */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 sm:pt-8">
+            <main className="w-full min-w-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+                {showSandboxNotice && <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Terra sandbox: session progress and lab results shown here are simulated, not clinical results.</p>}
                 {children}
             </main>
         </div>

@@ -1,5 +1,9 @@
 'use client';
 
+import { EmailInput } from '@/components/ui/email-input';
+import { normalizeEmail } from '@/lib/email-validation';
+import { useEmailValidation } from '@/lib/use-email-validation';
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -7,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
+import { prepareEmailVerification } from '@/lib/email-verification';
 import {
     Activity,
     Mail,
@@ -15,15 +20,16 @@ import {
     EyeOff,
     ArrowRight,
     Loader2,
-    ShieldCheck,
     LockKeyhole
 } from 'lucide-react';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
+    const emailValidation = useEmailValidation(email, true, 'login');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    const [verificationEmail, setVerificationEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [gateOpen, setGateOpen] = useState(false);
 
@@ -41,14 +47,27 @@ export default function LoginPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setVerificationEmail('');
+        if (!emailValidation.check()) return;
         setLoading(true);
         try {
-            const response = await axios.post('/api/v1/auth/login', { email, password });
+            const response = await axios.post('/api/v1/auth/login', { email: normalizeEmail(email), password });
             await login(response.data.access_token);
             router.push('/dashboard');
         } catch (err: any) {
             const msg = err.response?.data?.message;
-            setError(typeof msg === 'string' ? msg : 'Invalid credentials. Please verify your email and password.');
+            if (err.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
+                setVerificationEmail(email.trim().toLowerCase());
+                setError('Your email has not been verified.');
+            } else if (err.response?.status >= 500) {
+                setError('The login server is temporarily unavailable. Please try again shortly.');
+            } else if (typeof msg === 'string') {
+                setError(msg);
+            } else if (!err.response) {
+                setError('Unable to reach the server. Please check your connection and try again.');
+            } else {
+                setError('Something went wrong. Please try again.');
+            }
         } finally {
             setLoading(false);
         }
@@ -119,7 +138,7 @@ export default function LoginPage() {
                                 <span className="text-[#cbb28d] font-light">Personnel Only</span>
                             </h2>
                             <p className="text-sm text-slate-500 leading-relaxed max-w-sm">
-                                Unified health telemetry aggregation, real-time patient biometrics, and precision workflow analytics.
+                                Unified health telemetry aggregation, real-time patient biometrics, and precision session analytics.
                             </p>
                         </div>
                     </div>
@@ -140,13 +159,6 @@ export default function LoginPage() {
                         </div>
                     </div>
 
-                    {/* Bottom Status */}
-                    <div className="relative z-10 pt-4 border-t border-[#1a2642] flex items-center justify-between text-[11px] text-slate-400">
-                        <span className="flex items-center gap-1.5 text-[#cbb28d] font-medium">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            SECURE ACCESS NODE
-                        </span>
-                    </div>
                 </div>
 
                 {/* Right Executive Sign In Form */}
@@ -157,16 +169,10 @@ export default function LoginPage() {
                     <div className="max-w-md mx-auto w-full space-y-8">
 
                         {/* Title */}
-                        <div>
-                            <span className="text-[10px] font-mono tracking-[0.2em] uppercase text-[#8c7657] font-bold block mb-1">
-                                SECURE ACCESS
-                            </span>
+                        <div className="text-center">
                             <h3 className="text-2xl sm:text-3xl font-sans font-extrabold text-[#080e1e] tracking-tight">
-                                Sign In to Practice
+                                Sign In
                             </h3>
-                            <p className="text-xs text-slate-500 mt-1">
-                                Enter your physician credentials to access patient telemetry and workflows.
-                            </p>
                         </div>
 
                         {/* Form */}
@@ -179,18 +185,22 @@ export default function LoginPage() {
                             )}
 
                             {/* Email */}
+                            {verificationEmail && <Button type="button" variant="outline" className="w-full rounded-xl" onClick={() => {
+                                prepareEmailVerification(verificationEmail);
+                                router.push('/verify-email');
+                            }}>Verify Email</Button>}
                             <div className="space-y-1.5">
                                 <Label htmlFor="email" className="text-[10px] font-mono uppercase tracking-wider text-[#080e1e] font-bold">
                                     Physician Email
                                 </Label>
                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                    <div className="absolute top-0 h-11 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                                         <Mail className="w-4 h-4" />
                                     </div>
-                                    <Input
+                                    <EmailInput validationContext="login" error={emailValidation.error}
                                         id="email"
-                                        type="email"
-                                        placeholder="doctor@clinic.com"
+                                        
+                                        placeholder="doctor@gmail.com"
                                         required
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
@@ -250,11 +260,17 @@ export default function LoginPage() {
                         </form>
 
                         {/* Sign Up Link */}
-                        <div className="text-center pt-2 border-t border-[#e8e2cf]">
+                        <div className="text-center pt-2 border-t border-[#e8e2cf] space-y-2">
                             <p className="text-xs text-slate-500">
                                 New medical practice?{' '}
                                 <a href="/signup" className="text-[#080e1e] font-bold hover:underline">
                                     Register a clinic account
+                                </a>
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                Patient?{' '}
+                                <a href="/patient/results" className="text-[#080e1e] font-bold hover:underline">
+                                    Access your lab results
                                 </a>
                             </p>
                         </div>

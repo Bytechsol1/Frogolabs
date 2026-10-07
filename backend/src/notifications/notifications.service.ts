@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as sgMail from '@sendgrid/mail';
 import { Twilio } from 'twilio';
+import { requireMailboxEmail } from '../common/email-validation';
 
 @Injectable()
 export class NotificationsService {
@@ -19,13 +20,14 @@ export class NotificationsService {
     }
 
     async sendEmail(to: string, subject: string, text: string, html?: string) {
+        to = requireMailboxEmail(to);
         if (!process.env.SENDGRID_API_KEY) {
             console.log('SendGrid API Key missing. Skipping email.');
             return;
         }
         const msg = {
             to,
-            from: process.env.SENDGRID_FROM_EMAIL || 'notifications@frigolabs.com',
+            from: requireMailboxEmail(process.env.SENDGRID_FROM_EMAIL || 'notifications@frigolabs.com'),
             subject,
             text,
             html: html || text,

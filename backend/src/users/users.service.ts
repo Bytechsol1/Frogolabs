@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { User, Prisma } from '@prisma/client';
+import { requireEmail, requireLoginEmail } from '../common/email-validation';
 
 @Injectable()
 export class UsersService {
@@ -18,8 +19,9 @@ export class UsersService {
     }
 
     async findOne(email: string): Promise<any> {
-        return this.prisma.user.findUnique({
-            where: { email },
+        email = requireLoginEmail(email);
+        return this.prisma.user.findFirst({
+            where: { email: { equals: email.trim().toLowerCase(), mode: 'insensitive' } },
             include: { clinic: { select: { id: true, status: true } } },
         });
     }
@@ -31,12 +33,14 @@ export class UsersService {
     }
 
     async create(data: Prisma.UserCreateInput): Promise<User> {
+        data = { ...data, email: requireEmail(data.email) };
         return this.prisma.user.create({
             data,
         });
     }
 
     async update(id: string, data: { name?: string; email?: string }): Promise<User> {
+        if (data.email !== undefined) data = { ...data, email: requireEmail(data.email) };
         return this.prisma.user.update({ where: { id }, data });
     }
 }

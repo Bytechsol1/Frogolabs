@@ -1,48 +1,25 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+
+import { Suspense, useCallback, useEffect, useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-    Activity,
     Search,
     RotateCcw,
     ChevronRight,
     Eye,
-    ClipboardList,
-    Building2,
-    FlaskConical,
     Timer,
-    CheckCircle2,
-    AlertCircle
+    CheckCircle2
 } from 'lucide-react';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import axios from 'axios';
-
-const WORKFLOW_STATUSES = [
-    { key: 'PATIENT_CREATED', label: 'Patient Created' },
-    { key: 'TEST_PACKAGE_SELECTED', label: 'Test Package Selected' },
-    { key: 'TASSO_INSTRUCTIONS_SENT', label: 'Instructions Sent' },
-    { key: 'KIT_SHIPPED', label: 'Kit Shipped' },
-    { key: 'SAMPLE_COLLECTED', label: 'Sample Collected' },
-    { key: 'LAB_PROCESSING', label: 'Lab Processing' },
-    { key: 'RESULTS_READY', label: 'Results Ready' },
-    { key: 'COMPLETED', label: 'Completed' },
-];
 
 const EXECUTIVE_STATUS_BADGES: Record<string, { bg: string; text: string; label: string }> = {
     PATIENT_CREATED: { bg: 'bg-amber-900/10 border border-amber-800/20', text: 'text-amber-900', label: 'Patient Created' },
@@ -56,115 +33,98 @@ const EXECUTIVE_STATUS_BADGES: Record<string, { bg: string; text: string; label:
 };
 
 export default function DiagnosticWorkflowsPage() {
+    return <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading...</div>}><WorkflowsContent /></Suspense>;
+}
+
+function WorkflowsContent() {
+    const searchParams = useSearchParams();
     const router = useRouter();
     const { user } = useAuth();
+    const clinicId = user?.role === 'ADMIN' ? searchParams.get('clinic_id') : null;
+    const sessionsHref = (tab: string) => `/dashboard/workflows?tab=${tab}${clinicId ? `&clinic_id=${encodeURIComponent(clinicId)}` : ''}`;
     const [workflows, setWorkflows] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All');
 
-    // Status Update Modal
-    const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-    const [selectedWorkflow, setSelectedWorkflow] = useState<any>(null);
-    const [newStatus, setNewStatus] = useState('');
-    const [statusNote, setStatusNote] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    const fetchWorkflows = async () => {
+    const fetchWorkflows = useCallback(async (background = false) => {
         if (!user?.token) return;
-        setLoading(true);
+        if (!background) setLoading(true);
         try {
-            const res = await axios.get('/api/v1/workflows', {
-                headers: { Authorization: `Bearer ${user.token}` },
-            });
+            const config = { headers: { Authorization: `Bearer ${user.token}` } };
+            const res = await axios.get('/api/v1/workflows', config);
             setWorkflows(res.data);
+            setLoadError(false);
         } catch (err) {
-            console.error('Failed to fetch workflows', err);
+            setLoadError(true);
+            console.error('Failed to fetch sessions', err);
         } finally {
             setLoading(false);
         }
-    };
+    }, [user?.token]);
 
     useEffect(() => {
         fetchWorkflows();
-    }, [user?.token]);
+        const refresh = () => { if (document.visibilityState === 'visible') void fetchWorkflows(true); };
+        const timer = window.setInterval(refresh, 30000);
+        window.addEventListener('focus', refresh);
+        return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+    }, [fetchWorkflows]);
+
+    const scopedWorkflows = useMemo(() => workflows.filter(w => !clinicId || w.clinic_id === clinicId), [workflows, clinicId]);
 
     const filteredWorkflows = useMemo(() => {
-        return workflows.filter(w => {
+        return scopedWorkflows.filter(w => {
             const patientName = `${w.patient?.first_name || ''} ${w.patient?.last_name || ''}`.toLowerCase();
-            const clinicName = (w.patient?.clinic?.name || '').toLowerCase();
-            const pkg = (w.test_package || '').toLowerCase();
+            const clinicName = (w.clinic?.name || '').toLowerCase();
+            const pkg = (w.test_type || '').toLowerCase();
             const matchesSearch =
                 patientName.includes(searchQuery.toLowerCase()) ||
                 clinicName.includes(searchQuery.toLowerCase()) ||
                 pkg.includes(searchQuery.toLowerCase());
-            const matchesStatus =
-                statusFilter === 'All' || w.status === statusFilter;
-            return matchesSearch && matchesStatus;
+            return matchesSearch;
         });
-    }, [workflows, searchQuery, statusFilter]);
+    }, [scopedWorkflows, searchQuery]);
 
     const active = useMemo(() => filteredWorkflows.filter(w => w.status !== 'COMPLETED'), [filteredWorkflows]);
     const completed = useMemo(() => filteredWorkflows.filter(w => w.status === 'COMPLETED'), [filteredWorkflows]);
 
-    const totalActive = workflows.filter(w => w.status !== 'COMPLETED').length;
-    const totalResultsReady = workflows.filter(w => w.status === 'RESULTS_READY').length;
-    const totalCompleted = workflows.filter(w => w.status === 'COMPLETED').length;
+    const totalActive = scopedWorkflows.filter(w => w.status !== 'COMPLETED').length;
+    const totalCompleted = scopedWorkflows.filter(w => w.status === 'COMPLETED').length;
+
+    const selectedTab = searchParams.get('tab');
+    const activeTab = selectedTab === 'active' || selectedTab === 'completed' ? selectedTab : 'total';
+    const tabCounts = { total: scopedWorkflows.length, active: totalActive, completed: totalCompleted };
 
     const isAdmin = user?.role === 'ADMIN';
-
-    const handleUpdateStatus = async () => {
-        if (!selectedWorkflow || !newStatus) return;
-        setSaving(true);
-        try {
-            await axios.patch(
-                `/api/v1/workflows/${selectedWorkflow.id}/status`,
-                { status: newStatus, notes: statusNote || undefined, updated_by: user?.sub },
-                { headers: { Authorization: `Bearer ${user?.token}` } }
-            );
-            setIsStatusModalOpen(false);
-            setSelectedWorkflow(null);
-            setStatusNote('');
-            await fetchWorkflows();
-        } catch (err) {
-            console.error('Failed to update workflow status', err);
-        } finally {
-            setSaving(false);
-        }
-    };
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 max-w-full overflow-hidden pb-8">
             {/* Header */}
             <div>
+                {clinicId && <Link href={`/dashboard/clinics/${encodeURIComponent(clinicId)}`} className="inline-block mb-3 text-sm text-slate-600 hover:underline">Back to clinic</Link>}
                 <span className="text-[10px] font-mono tracking-[0.25em] text-[#8c7657] uppercase font-bold block mb-1">
 
                 </span>
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#080e1e]">
-                    Diagnostic Workflows
+                    {clinicId ? `${scopedWorkflows[0]?.clinic?.name || 'Clinic'} Sessions` : 'Diagnostic Sessions'}
                 </h1>
                 <p className="text-xs text-slate-500 mt-1">
 
                 </p>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid gap-4 sm:grid-cols-3">
-                <SummaryCard title="Active Workflows" value={totalActive} icon={Activity} />
-                <SummaryCard title="Results Ready" value={totalResultsReady} icon={FlaskConical} />
-                <SummaryCard title="Completed Workflows" value={totalCompleted} icon={CheckCircle2} />
-            </div>
-
+            {loadError && <p role="alert" className="text-sm text-rose-700">Could not refresh session data. Retrying automatically.</p>}
             {/* Tabs */}
-            <Tabs defaultValue="active" className="w-full">
+            <Tabs value={activeTab} onValueChange={(value) => router.replace(sessionsHref(value), { scroll: false })} className="w-full">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                    <TabsList className="bg-white/10 p-1.5 rounded-full border border-white/20 inline-flex shadow-xs">
-                        <TabsTrigger value="active" className="flex items-center gap-2 text-sm font-bold text-slate-300 rounded-full px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
-                            Active <Badge className="px-2.5 py-0.5 text-xs bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30 font-extrabold rounded-full">{totalActive}</Badge>
-                        </TabsTrigger>
-                        <TabsTrigger value="completed" className="flex items-center gap-2 text-sm font-bold text-slate-300 rounded-full px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
-                            Completed <Badge className="px-2.5 py-0.5 text-xs bg-slate-200 text-slate-800 border-none font-extrabold rounded-full">{totalCompleted}</Badge>
-                        </TabsTrigger>
+                    <TabsList className="bg-white/10 p-1.5 rounded-full border border-white/20 inline-flex shadow-xs max-w-full">
+                        {(['total', 'active', 'completed'] as const).map(tab => (
+                            <TabsTrigger key={tab} value={tab} className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold rounded-full px-3 sm:px-6 py-2.5 data-active:bg-white">
+                                {tab === 'total' ? 'Total' : tab === 'active' ? 'Active' : 'Completed'}
+                                <span className="rounded-full bg-[#f2ede0] px-1.5 py-0.5 text-[11px] tabular-nums text-[#080e1e]">{loading ? '?' : tabCounts[tab]}</span>
+                            </TabsTrigger>
+                        ))}
                     </TabsList>
 
                     <div className="flex items-center gap-2 flex-1 sm:max-w-md">
@@ -185,17 +145,19 @@ export default function DiagnosticWorkflowsPage() {
                     </div>
                 </div>
 
-                {/* Active Workflows Tab */}
-                <TabsContent value="active" className="mt-0">
+                {/* Total and active sessions share the same table and actions. */}
+                {(['total', 'active'] as const).map(tab => {
+                    const sessions = tab === 'total' ? filteredWorkflows : active;
+                    return <TabsContent key={tab} value={tab} className="mt-0">
                     <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden">
                         <CardHeader className="bg-white/60 border-b border-[#e6e0ce] py-4">
                             <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
-                                <Timer className="w-4 h-4 text-[#cbb28d]" /> Active Workflow Queue
+                                <Timer className="w-4 h-4 text-[#cbb28d]" /> {tab === 'total' ? 'All Sessions' : 'Active Session Queue'}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
                             {loading ? (
-                                <div className="p-12 text-center text-slate-500 text-xs italic">Loading workflows...</div>
+                                <div className="p-12 text-center text-slate-500 text-xs italic">Loading sessions...</div>
                             ) : (
                                 <Table>
                                     <TableHeader className="bg-[#f2ede0]/80 border-b border-[#e6e0ce]">
@@ -209,13 +171,13 @@ export default function DiagnosticWorkflowsPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {active.length === 0 ? (
+                                        {sessions.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={isAdmin ? 6 : 5} className="h-24 text-center text-slate-500 italic text-xs">
-                                                    No active workflows found.
+                                                    {tab === 'total' ? 'No sessions found.' : 'No active sessions found.'}
                                                 </TableCell>
                                             </TableRow>
-                                        ) : active.map(w => {
+                                        ) : sessions.map(w => {
                                             const badgeInfo = EXECUTIVE_STATUS_BADGES[w.status] || { bg: 'bg-[#080e1e]', text: 'text-[#cbb28d]', label: w.status };
                                             return (
                                                 <TableRow key={w.id} className="hover:bg-[#f3eee0] transition-colors border-b border-[#e6e0ce]">
@@ -224,10 +186,10 @@ export default function DiagnosticWorkflowsPage() {
                                                     </TableCell>
                                                     {isAdmin && (
                                                         <TableCell className="text-xs text-slate-700 font-medium">
-                                                            {w.patient?.clinic?.name || '—'}
+                                                            {w.clinic?.name || '—'}
                                                         </TableCell>
                                                     )}
-                                                    <TableCell className="text-xs text-slate-700 font-medium">{w.test_package || 'General'}</TableCell>
+                                                    <TableCell className="text-xs text-slate-700 font-medium">{w.test_type || 'Not specified'}</TableCell>
                                                     <TableCell>
                                                         <span className={`text-[11px] font-bold px-3 py-1 rounded-full ${badgeInfo.bg} ${badgeInfo.text}`}>
                                                             {badgeInfo.label}
@@ -237,23 +199,17 @@ export default function DiagnosticWorkflowsPage() {
                                                         {new Date(w.updated_at).toLocaleDateString()}
                                                     </TableCell>
                                                     <TableCell className="text-right pr-6 space-x-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-8 text-xs font-bold text-[#080e1e] hover:bg-white rounded-full"
-                                                            onClick={() => router.push(`/dashboard/patients/${w.patient_id}`)}
+                                                        <Link
+                                                            href={`/dashboard/patients/${w.patient_id}?tab=history`}
+                                                            aria-label={`View status history for ${w.patient?.first_name || ''} ${w.patient?.last_name || ''}`.trim()}
+                                                            className="inline-flex h-9 min-w-[104px] items-center justify-between gap-2 rounded-full border border-[#d8c6a7] bg-[#faf7f0] py-1 pl-1 pr-3 align-middle text-xs font-bold text-[#080e1e] shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8c7657]"
                                                         >
-                                                            View
-                                                        </Button>
-                                                        {isAdmin && (
-                                                            <Button
-                                                                size="sm"
-                                                                className="h-8 text-xs font-bold bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] rounded-full px-3 gap-1"
-                                                                onClick={() => { setSelectedWorkflow(w); setNewStatus(w.status); setStatusNote(''); setIsStatusModalOpen(true); }}
-                                                            >
-                                                                <ClipboardList className="w-3.5 h-3.5 text-[#cbb28d]" /> Update
-                                                            </Button>
-                                                        )}
+                                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#080e1e]">
+                                                                <Eye className="h-3.5 w-3.5 text-[#dfc59e]" aria-hidden="true" />
+                                                            </span>
+                                                            <span>View</span>
+                                                            <ChevronRight className="h-3 w-3 text-[#8c7657]" aria-hidden="true" />
+                                                        </Link>
                                                     </TableCell>
                                                 </TableRow>
                                             );
@@ -263,14 +219,15 @@ export default function DiagnosticWorkflowsPage() {
                             )}
                         </CardContent>
                     </Card>
-                </TabsContent>
+                </TabsContent>;
+                })}
 
                 {/* Completed Tab */}
                 <TabsContent value="completed" className="mt-0">
                     <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden">
                         <CardHeader className="bg-white/60 border-b border-[#e6e0ce] py-4">
                             <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
-                                <CheckCircle2 className="w-4 h-4 text-[#cbb28d]" /> Completed Workflows Log
+                                <CheckCircle2 className="w-4 h-4 text-[#cbb28d]" /> Completed Sessions Log
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
@@ -288,7 +245,7 @@ export default function DiagnosticWorkflowsPage() {
                                     {completed.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={isAdmin ? 5 : 4} className="h-24 text-center text-slate-500 italic text-xs">
-                                                No completed workflows found.
+                                                No completed sessions found.
                                             </TableCell>
                                         </TableRow>
                                     ) : completed.map(w => (
@@ -296,8 +253,8 @@ export default function DiagnosticWorkflowsPage() {
                                             <TableCell className="font-bold text-xs text-[#080e1e]">
                                                 {w.patient ? `${w.patient.first_name} ${w.patient.last_name}` : '—'}
                                             </TableCell>
-                                            {isAdmin && <TableCell className="text-xs text-slate-700 font-medium">{w.patient?.clinic?.name || '—'}</TableCell>}
-                                            <TableCell className="text-xs text-slate-700 font-medium">{w.test_package || 'General'}</TableCell>
+                                            {isAdmin && <TableCell className="text-xs text-slate-700 font-medium">{w.clinic?.name || '—'}</TableCell>}
+                                            <TableCell className="text-xs text-slate-700 font-medium">{w.test_type || 'Not specified'}</TableCell>
                                             <TableCell>
                                                 <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-slate-200 text-slate-800">Completed</span>
                                             </TableCell>
@@ -311,61 +268,7 @@ export default function DiagnosticWorkflowsPage() {
                 </TabsContent>
             </Tabs>
 
-            {/* Status Update Modal */}
-            <Dialog open={isStatusModalOpen} onOpenChange={setIsStatusModalOpen}>
-                <DialogContent className="bg-white border-[#e4dec3] rounded-3xl sm:max-w-[440px]">
-                    <DialogHeader>
-                        <DialogTitle className="text-[#080e1e] font-bold flex items-center gap-2">
-                            <ClipboardList className="w-5 h-5 text-[#cbb28d]" /> Update Diagnostic Stage
-                        </DialogTitle>
-                        <DialogDescription className="text-xs text-slate-600">
-                            Advance workflow stage for {selectedWorkflow?.patient?.first_name} {selectedWorkflow?.patient?.last_name}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-mono font-bold text-[#8c7657] uppercase">Target Status</label>
-                            <select
-                                className="w-full bg-white border border-[#ded8c4] rounded-xl px-3 py-2 text-xs font-bold text-[#080e1e] outline-none"
-                                value={newStatus}
-                                onChange={e => setNewStatus(e.target.value)}
-                            >
-                                {WORKFLOW_STATUSES.map(s => (
-                                    <option key={s.key} value={s.key}>{s.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <DialogFooter className="gap-2">
-                        <Button variant="outline" className="rounded-full text-xs font-bold border-[#ded8c4]" onClick={() => setIsStatusModalOpen(false)}>Cancel</Button>
-                        <Button
-                            disabled={saving}
-                            className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full"
-                            onClick={handleUpdateStatus}
-                        >
-                            {saving ? 'Saving...' : 'Save Update'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }
 
-function SummaryCard({ title, value, icon: Icon }: any) {
-    return (
-        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
-                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
-                        <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
-                </div>
-            </div>
-            <div>
-                <p className="text-3xl font-extrabold text-slate-900">{value}</p>
-            </div>
-        </Card>
-    );
-}

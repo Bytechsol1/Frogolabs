@@ -18,12 +18,12 @@ export class ClinicsController {
     }
 
     @Post()
-    create(@Body() data: any) {
+    create(@Body() data: unknown) {
         return this.clinicsService.create(data);
     }
 
     @Put(':id')
-    update(@Param('id') id: string, @Body() data: any) {
+    update(@Param('id') id: string, @Body() data: unknown) {
         return this.clinicsService.update(id, data);
     }
 }

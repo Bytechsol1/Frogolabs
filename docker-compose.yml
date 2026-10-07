@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: frigoflow-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: frigoflow
+      POSTGRES_PASSWORD: frigoflow_dev_password
+      POSTGRES_DB: frigoflow
+    ports:
+      - '5432:5432'
+    volumes:
+      - frigoflow_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  frigoflow_postgres_data:

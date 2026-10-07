@@ -13,43 +13,43 @@ async function main() {
     await prisma.user.upsert({
         where: { email: 'admin@frigolabs.com' },
         update: { password_hash: adminHash },
-        create: { email: 'admin@frigolabs.com', name: 'Frigo Admin', password_hash: adminHash, role: 'ADMIN' },
+        create: { email: 'admin@frigolabs.com', name: 'Frigo Admin', password_hash: adminHash, email_verified: true, role: 'ADMIN' },
     });
 
     // ── Clinic 1: Austin Family Clinic ───────────────────────────
     const c1 = await prisma.clinic.upsert({
         where: { email: 'emily@austinfamily.com' },
         update: {},
-        create: { name: 'Austin Family Clinic', contact_name: 'Dr. Emily Carter', email: 'emily@austinfamily.com', phone: '(512) 555-0182', status: 'Active' },
+        create: { is_demo: true, name: 'Austin Family Clinic', contact_name: 'Dr. Emily Carter', email: 'emily@austinfamily.com', phone: '(512) 555-0182', status: 'Active' },
     });
     await prisma.user.upsert({
         where: { email: 'emily@austinfamily.com' },
         update: {},
-        create: { email: 'emily@austinfamily.com', name: 'Dr. Emily Carter', password_hash: demoHash, role: 'CLINIC_USER', clinic_id: c1.id },
+        create: { email: 'emily@austinfamily.com', name: 'Dr. Emily Carter', password_hash: demoHash, email_verified: true, role: 'CLINIC_USER', clinic_id: c1.id },
     });
 
     // ── Clinic 2: Green Valley Clinic ────────────────────────────
     const c2 = await prisma.clinic.upsert({
         where: { email: 'mark@greenvalley.com' },
         update: {},
-        create: { name: 'Green Valley Clinic', contact_name: 'Mark Johnson', email: 'mark@greenvalley.com', phone: '(214) 555-0129', status: 'Active' },
+        create: { is_demo: true, name: 'Green Valley Clinic', contact_name: 'Mark Johnson', email: 'mark@greenvalley.com', phone: '(214) 555-0129', status: 'Active' },
     });
     await prisma.user.upsert({
         where: { email: 'mark@greenvalley.com' },
         update: {},
-        create: { email: 'mark@greenvalley.com', name: 'Mark Johnson', password_hash: demoHash, role: 'CLINIC_USER', clinic_id: c2.id },
+        create: { email: 'mark@greenvalley.com', name: 'Mark Johnson', password_hash: demoHash, email_verified: true, role: 'CLINIC_USER', clinic_id: c2.id },
     });
 
     // ── Clinic 3: Westside Health Center ─────────────────────────
     const c3 = await prisma.clinic.upsert({
         where: { email: 'sarah@westside.com' },
         update: {},
-        create: { name: 'Westside Health Center', contact_name: 'Sarah Lee', email: 'sarah@westside.com', phone: '(310) 555-0164', status: 'Active' },
+        create: { is_demo: true, name: 'Westside Health Center', contact_name: 'Sarah Lee', email: 'sarah@westside.com', phone: '(310) 555-0164', status: 'Active' },
     });
     await prisma.user.upsert({
         where: { email: 'sarah@westside.com' },
         update: {},
-        create: { email: 'sarah@westside.com', name: 'Sarah Lee', password_hash: demoHash, role: 'CLINIC_USER', clinic_id: c3.id },
+        create: { email: 'sarah@westside.com', name: 'Sarah Lee', password_hash: demoHash, email_verified: true, role: 'CLINIC_USER', clinic_id: c3.id },
     });
 
     // ── Helper: create patient + workflow ────────────────────────
@@ -63,6 +63,7 @@ async function main() {
         if (!patient) {
             patient = await prisma.patient.create({
                 data: {
+                    is_demo: true,
                     first_name: p.first_name,
                     last_name: p.last_name,
                     email: p.email,

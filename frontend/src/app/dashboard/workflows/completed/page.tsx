@@ -9,7 +9,7 @@ export default function CompletedWorkflowsPage() {
     return (
         <div className="space-y-6 animate-in fade-in duration-700">
             <div>
-                <h2 className="text-3xl font-bold tracking-tight text-primary">Completed Workflows</h2>
+                <h2 className="text-3xl font-bold tracking-tight text-primary">Completed Sessions</h2>
                 <p className="text-muted-foreground">Historical records of finalized diagnostic journeys.</p>
             </div>
 

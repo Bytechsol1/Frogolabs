@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, UseGuards, Request, Param, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, UseGuards, Request, Param, Query, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PatientsService } from './patients.service';
 
@@ -8,8 +8,8 @@ export class PatientsController {
     constructor(private patientsService: PatientsService) { }
 
     @Get()
-    async findAll(@Request() req) {
-        return this.patientsService.findAll(req.user.clinic_id);
+    async findAll(@Request() req, @Query('clinic_id') clinicId?: string) {
+        return this.patientsService.findAll(req.user.role === 'ADMIN' ? clinicId || null : req.user.clinic_id);
     }
 
     @Get(':id')
@@ -18,7 +18,7 @@ export class PatientsController {
     }
 
     @Post()
-    async create(@Body() data: any, @Request() req) {
+    async create(@Body() data: unknown, @Request() req) {
         if (!req.user.clinic_id) {
             throw new ForbiddenException('Only clinic users can add patients');
         }
@@ -26,7 +26,7 @@ export class PatientsController {
     }
 
     @Put(':id')
-    async update(@Param('id') id: string, @Body() data: any, @Request() req) {
+    async update(@Param('id') id: string, @Body() data: unknown, @Request() req) {
         return this.patientsService.update(id, req.user.clinic_id, data);
     }
 }

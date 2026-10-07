@@ -19,6 +19,7 @@ import {
     UserMinus,
     AlertCircle,
     Users,
+    type LucideIcon,
 } from 'lucide-react';
 import {
     DropdownMenu,
@@ -52,12 +53,35 @@ export default function AllClinicsPage() {
 
     useEffect(() => {
         if (!user?.token) return;
-        axios.get('/api/v1/clinics', {
-            headers: { Authorization: `Bearer ${user.token}` },
-        })
-            .then(res => setClinics(res.data))
-            .catch(() => { })
-            .finally(() => setLoading(false));
+        const controller = new AbortController();
+        let fetching = false;
+        const refresh = async () => {
+            if (fetching) return;
+            fetching = true;
+            try {
+                const res = await axios.get('/api/v1/clinics', {
+                    headers: { Authorization: `Bearer ${user.token}` },
+                    signal: controller.signal,
+                });
+                if (!controller.signal.aborted) setClinics(res.data);
+            } catch {
+                // Keep the last successful list during a temporary connection failure.
+            } finally {
+                fetching = false;
+                if (!controller.signal.aborted) setLoading(false);
+            }
+        };
+        const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+        void refresh();
+        const timer = window.setInterval(refresh, 30_000);
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            controller.abort();
+            window.clearInterval(timer);
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
     }, [user?.token]);
 
     const filteredClinics = useMemo(() => {
@@ -76,12 +100,10 @@ export default function AllClinicsPage() {
 
     const total = clinics.length;
     const active = clinics.filter(c => (c.status || 'Active') === 'Active').length;
-    const pending = clinics.filter(c => c.status === 'Pending').length;
     const inactive = clinics.filter(c => c.status === 'Inactive').length;
 
     const statusColor = (s: string) => {
         if (!s || s === 'Active') return 'bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30 font-bold';
-        if (s === 'Pending') return 'bg-amber-950/20 text-amber-900 border border-amber-900/30';
         return 'bg-slate-200 text-slate-700';
     };
 
@@ -98,7 +120,7 @@ export default function AllClinicsPage() {
 
             </div>
 
-            {/* Search + Filters (Off-White & Cream) */}
+            {/* Clinic search */}
             <Card className="border border-[#e4dec3]/70 bg-white shadow-xs rounded-3xl overflow-hidden">
                 <CardContent className="p-4 flex flex-col md:flex-row gap-3">
                     <div className="relative flex-1">
@@ -110,32 +132,19 @@ export default function AllClinicsPage() {
                             onChange={e => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                        <select
-                            className="bg-white border border-[#ded8c4] rounded-full px-4 py-2 text-xs font-bold text-[#080e1e] outline-none focus:border-[#080e1e]"
-                            value={statusFilter}
-                            onChange={e => setStatusFilter(e.target.value)}
-                        >
-                            <option value="All">All Statuses</option>
-                            <option value="Active">Active</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Inactive">Inactive</option>
-                        </select>
-                        {searchQuery && (
+                    {searchQuery && (
                             <Button variant="ghost" className="gap-2 text-xs font-bold text-slate-600 hover:text-[#080e1e] rounded-full" onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}>
                                 <RotateCcw className="w-3.5 h-3.5" /> Reset
                             </Button>
-                        )}
-                    </div>
+                    )}
                 </CardContent>
             </Card>
 
             {/* Summary cards */}
-            <div className="grid gap-4 md:grid-cols-4">
-                <SummaryCard title="Total Clinics" value={total} icon={Building2} />
-                <SummaryCard title="Active Clinics" value={active} icon={Activity} />
-                <SummaryCard title="Pending Clinics" value={pending} icon={RotateCcw} />
-                <SummaryCard title="Inactive Clinics" value={inactive} icon={UserMinus} />
+            <div className="grid gap-4 md:grid-cols-3">
+                <SummaryCard title="Total Clinics" value={total} icon={Building2} selected={statusFilter === 'All'} onClick={() => setStatusFilter('All')} />
+                <SummaryCard title="Active Clinics" value={active} icon={Activity} selected={statusFilter === 'Active'} onClick={() => setStatusFilter('Active')} />
+                <SummaryCard title="Inactive Clinics" value={inactive} icon={UserMinus} selected={statusFilter === 'Inactive'} onClick={() => setStatusFilter('Inactive')} />
             </div>
 
             {/* Table */}
@@ -162,7 +171,6 @@ export default function AllClinicsPage() {
                                     <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Primary Contact</TableHead>
                                     <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Contact Details</TableHead>
                                     <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-center">Patients</TableHead>
-                                    <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-center">Workflows</TableHead>
                                     <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Status</TableHead>
                                     <TableHead className="text-right font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] pr-6">Actions</TableHead>
                                 </TableRow>
@@ -196,11 +204,6 @@ export default function AllClinicsPage() {
                                                 <Users className="w-3.5 h-3.5 text-slate-400" />
                                                 {c._count?.patients ?? 0}
                                             </div>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <Badge variant="outline" className="text-[10px] font-bold border-[#080e1e]/20 text-[#080e1e] px-2 py-0.5 rounded-full">
-                                                {c._count?.workflows ?? 0}
-                                            </Badge>
                                         </TableCell>
                                         <TableCell>
                                             <Badge className={`${statusColor(c.status)} text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full`}>
@@ -296,20 +299,32 @@ export default function AllClinicsPage() {
     );
 }
 
-function SummaryCard({ title, value, icon: Icon }: any) {
+function SummaryCard({ title, value, icon: Icon, selected, onClick }: {
+    title: string;
+    value: number;
+    icon: LucideIcon;
+    selected: boolean;
+    onClick: () => void;
+}) {
     return (
-        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
+        <button
+            type="button"
+            aria-label={title}
+            aria-pressed={selected}
+            onClick={onClick}
+            className={`flex flex-col w-full border shadow-sm rounded-3xl overflow-hidden p-5 sm:p-6 gap-6 text-left cursor-pointer transition-colors hover:border-[#cbb28d] hover:bg-[#faf8f3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8c7657] focus-visible:ring-offset-2 ${selected ? 'border-[#cbb28d] bg-[#faf8f3]' : 'border-[#e4dec3]/70 bg-white'}`}
+        >
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
-                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                <div className="flex min-w-0 items-center gap-3 text-xs font-bold text-slate-500">
+                    <div className="p-3 shrink-0 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
                         <Icon className="w-5 h-5" />
                     </div>
-                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
+                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] min-w-0 break-words">{title}</span>
                 </div>
             </div>
             <div>
                 <p className="text-3xl font-extrabold text-slate-900">{value}</p>
             </div>
-        </Card>
+        </button>
     );
 }

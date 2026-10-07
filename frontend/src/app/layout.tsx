@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Frigo Labs | Diagnostic Workflow Platform",
+  title: "Frigo Labs | Diagnostic Session Platform",
   description: "Operational layer for diagnostic clinics and labs.",
 };
 

@@ -2,32 +2,44 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from "@/context/AuthContext";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
     Users,
-    Activity,
     CheckCircle,
-    FlaskConical,
     Clock,
+    FlaskConical,
     ChevronRight,
     Building2,
     Plus,
-    MoreVertical,
-    PhoneCall,
-    AlertCircle,
-    TrendingUp,
     CalendarDays
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import Link from 'next/link';
 
 export default function DashboardPage() {
     const { user } = useAuth();
     return user?.role === 'ADMIN' ? <AdminDashboard /> : <ClinicDashboard />;
+}
+
+function useTimeGreeting() {
+    const [greeting, setGreeting] = useState('');
+    useEffect(() => {
+        const updateGreeting = () => {
+            const hour = new Date().getHours();
+            setGreeting(hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening');
+        };
+        updateGreeting();
+        const timer = window.setInterval(updateGreeting, 60000);
+        window.addEventListener('focus', updateGreeting);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener('focus', updateGreeting);
+        };
+    }, []);
+    return greeting;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -52,54 +64,43 @@ const STATUS_BADGES: Record<string, { bg: string; text: string }> = {
     COMPLETED: { bg: 'bg-slate-900/10 border border-slate-700/20', text: 'text-slate-800' },
 };
 
-const DAYS_BAR = [
-    { day: 'SAT', date: '6' },
-    { day: 'SUN', date: '7' },
-    { day: 'MON', date: '8' },
-    { day: 'TUE', date: '9' },
-    { day: 'WED', date: '10' },
-    { day: 'THU', date: '11' },
-    { day: 'FRI', date: '12', active: true },
-    { day: 'SAT', date: '13' },
-    { day: 'SUN', date: '14' },
-    { day: 'MON', date: '15' },
-    { day: 'TUE', date: '16' },
-];
+
 
 // ─────────────────────────────────────────────────────────────────
 // ADMIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────
 function AdminDashboard() {
+    const greeting = useTimeGreeting();
     const { user } = useAuth();
     const router = useRouter();
-    const [patients, setPatients] = useState<any[]>([]);
-    const [clinics, setClinics] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         if (!user?.token) return;
-        const headers = { Authorization: `Bearer ${user.token}` };
-        Promise.all([
-            axios.get('/api/v1/patients', { headers }),
-            axios.get('/api/v1/clinics', { headers }),
-        ])
-            .then(([pRes, cRes]) => {
-                setPatients(pRes.data);
-                setClinics(cRes.data);
-            })
-            .catch(() => { })
-            .finally(() => setLoading(false));
+        const controller = new AbortController();
+        const refresh = async () => {
+            try {
+                const { data } = await axios.get('/api/v1/dashboard/admin/stats', {
+                    headers: { Authorization: `Bearer ${user.token}` }, signal: controller.signal,
+                });
+                setStats(data); setError('');
+            } catch {
+                if (!controller.signal.aborted) setError('Dashboard data could not be refreshed. Please try again.');
+            } finally { if (!controller.signal.aborted) setLoading(false); }
+        };
+        void refresh();
+        const onFocus = () => { if (document.visibilityState === 'visible') void refresh(); };
+        const timer = window.setInterval(onFocus, 30000);
+        window.addEventListener('focus', onFocus);
+        return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', onFocus); };
     }, [user?.token]);
 
-    const totalClinics = clinics.length;
-    const totalPatients = patients.length;
-    const activeWorkflows = patients.filter(p => p.workflows?.[0]?.status && p.workflows[0].status !== 'COMPLETED').length;
-    const resultsReady = patients.filter(p => p.workflows?.[0]?.status === 'RESULTS_READY').length;
-    const completedWorkflows = patients.filter(p => p.workflows?.[0]?.status === 'COMPLETED').length;
-
-    const recentPatients = patients.slice(0, 5);
-    const attentionPatients = patients.filter(p => ['RESULTS_READY', 'SAMPLE_COLLECTED', 'KIT_SHIPPED'].includes(p.workflows?.[0]?.status)).slice(0, 3);
-    const telemetryPatients = patients.filter(p => p.validic_user_id).slice(0, 3);
+    const totalClinics = stats?.kpi.totalClinics;
+    const resultsReady = stats?.kpi.resultsReady;
+    const completedWorkflows = stats?.kpi.completedWorkflows;
+    const activeClinics: { id: string; name: string; contact_name: string | null; email: string | null; status: string | null }[] = stats?.tables.activeClinics || [];
 
     if (loading) return <MediqSkeleton />;
 
@@ -107,144 +108,63 @@ function AdminDashboard() {
         <div className="space-y-8 animate-in fade-in duration-500 pb-8">
             {/* Header */}
             <div>
-                <span className="text-[10px] font-mono tracking-[0.25em] text-[#8c7657] uppercase font-bold block mb-1">
-
-                </span>
                 <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#080e1e]">
-                    Hello, {user?.name || 'Admin'}
+                    {greeting && `${greeting}!`}
                 </h1>
             </div>
 
-            {/* Stat Cards (5 KPI Cards restored) */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5">
-                <MediqStatCard title="Total Clinics" value={String(totalClinics)} icon={Building2} />
-                <MediqStatCard title="Total Patients" value={String(totalPatients)} icon={Users} />
-                <MediqStatCard title="Active Workflows" value={String(activeWorkflows)} icon={Activity} />
-                <MediqStatCard title="Results Ready" value={String(resultsReady)} icon={FlaskConical} />
-                <MediqStatCard title="Completed" value={String(completedWorkflows)} icon={CheckCircle} />
+            {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+            {/* Live-data summary links */}
+            <div className="grid gap-4 sm:grid-cols-3">
+                <MediqStatCard title="Total Clinics" value={totalClinics == null ? "--" : String(totalClinics)} icon={Building2} href="/dashboard/clinics" />
+                <MediqStatCard title="Results Ready" value={resultsReady == null ? "--" : String(resultsReady)} icon={FlaskConical} href="/dashboard/lab-results?tab=available" />
+                <MediqStatCard title="Completed" value={completedWorkflows == null ? "--" : String(completedWorkflows)} icon={CheckCircle} href="/dashboard/workflows?tab=completed" />
             </div>
 
             {/* Main Grid */}
-            <div className="grid gap-6 lg:grid-cols-12">
+            <div className="space-y-6">
                 {/* Left Workflow List */}
-                <div className="lg:col-span-8 space-y-6">
+                <div className="space-y-6">
                     <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-6">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <h2 className="text-lg font-bold text-[#080e1e] flex items-center gap-2">
-                                <CalendarDays className="w-5 h-5 text-[#cbb28d]" /> Active Patient Workflows
+                                <Building2 className="w-5 h-5 text-[#cbb28d]" /> Active Clinics
                             </h2>
                             <div className="flex items-center gap-2">
-                                <Button size="sm" className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full gap-1.5 px-4 h-9 shadow-sm" onClick={() => router.push('/dashboard/patients')}>
-                                    <Plus className="w-4 h-4 text-[#cbb28d]" /> View Patients
+                                <Button size="sm" className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full gap-1.5 px-4 h-9 shadow-sm" onClick={() => router.push('/dashboard/clinics')}>
+                                    <Building2 className="w-4 h-4 text-[#cbb28d]" /> View Clinics
                                 </Button>
                             </div>
                         </div>
 
-                        {/* Workflow Rows */}
                         <div className="space-y-3">
-                            {recentPatients.length === 0 ? (
-                                <p className="text-center py-8 text-slate-500 text-xs italic">No active workflows available.</p>
-                            ) : recentPatients.map((p) => {
-                                const st = p.workflows?.[0]?.status || 'PATIENT_CREATED';
-                                const badgeInfo = STATUS_BADGES[st] || { bg: 'bg-[#080e1e]', text: 'text-[#cbb28d]' };
-                                const isGreen = ['RESULTS_READY', 'COMPLETED'].includes(st);
-
-                                return (
-                                    <div
-                                        key={p.id}
-                                        onClick={() => router.push(`/dashboard/patients/${p.id}`)}
-                                        className="relative p-4 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] transition-all duration-200 flex items-center justify-between gap-4 cursor-pointer group"
-                                    >
-                                        <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${isGreen ? 'bg-[#cbb28d]' : 'bg-[#080e1e]'
-                                            }`} />
-
-                                        <div className="pl-3 flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-[#080e1e] text-[#cbb28d] font-bold text-sm flex items-center justify-center shrink-0 border border-[#cbb28d]/30">
-                                                {p.first_name[0]}{p.last_name[0]}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-[#080e1e] group-hover:text-[#8c7657] transition-colors">
-                                                    {p.first_name} {p.last_name}
-                                                </p>
-                                                <p className="text-xs text-slate-500">
-                                                    {p.clinic?.name || 'Clinic'} • {p.workflows?.[0]?.test_type || 'General Diagnostic'}
-                                                </p>
-                                            </div>
+                            {activeClinics.length === 0 ? (
+                                <p className="text-center py-8 text-slate-500 text-xs italic">No active clinics available.</p>
+                            ) : activeClinics.map(clinic => (
+                                <Link key={clinic.id} href={`/dashboard/clinics/${clinic.id}`}
+                                    className="relative p-4 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] focus-visible:outline-2 focus-visible:outline-[#cbb28d] transition-all duration-200 flex items-center justify-between gap-4 group">
+                                    <span aria-hidden="true" className="absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full bg-[#cbb28d]" />
+                                    <div className="pl-3 flex min-w-0 items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-[#080e1e] text-[#cbb28d] flex items-center justify-center shrink-0 border border-[#cbb28d]/30">
+                                            <Building2 aria-hidden="true" className="w-5 h-5" />
                                         </div>
-
-                                        <div className="flex items-center gap-3">
-                                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${badgeInfo.bg} ${badgeInfo.text}`}>
-                                                {STATUS_LABELS[st] || st}
-                                            </span>
-                                            <button className="w-8 h-8 rounded-full bg-white border border-[#ded8c4] flex items-center justify-center text-[#080e1e] hover:bg-[#080e1e] hover:text-white transition-colors">
-                                                <ChevronRight className="w-4 h-4" />
-                                            </button>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-[#080e1e] group-hover:text-[#8c7657] break-words">{clinic.name}</p>
+                                            {(clinic.contact_name || clinic.email) && <p className="text-xs text-slate-500 break-all">{clinic.contact_name || clinic.email}</p>}
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Right Side Cards */}
-                <div className="lg:col-span-4 space-y-6">
-                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-sm font-extrabold text-[#080e1e] flex items-center gap-2">
-                                <AlertCircle className="w-4 h-4 text-rose-700" /> Needs Attention
-                            </h2>
-                            <button className="text-xs font-bold text-[#8c7657] hover:underline" onClick={() => router.push('/dashboard/workflows')}>
-                                View All
-                            </button>
-                        </div>
-
-                        <div className="space-y-3">
-                            {attentionPatients.length === 0 ? (
-                                <p className="text-center py-4 text-slate-500 text-xs italic">All clear.</p>
-                            ) : attentionPatients.map(p => {
-                                const st = p.workflows[0].status;
-                                let type = 'info';
-                                if (st === 'RESULTS_READY') type = 'urgent';
-                                else if (st === 'SAMPLE_COLLECTED') type = 'warning';
-
-                                return (
-                                    <AttentionItem key={p.id} title={STATUS_LABELS[st] || st} patient={`${p.first_name} ${p.last_name}`} time={new Date(p.workflows[0].created_at).toLocaleDateString()} type={type} onClick={() => router.push(`/dashboard/patients/${p.id}`)} />
-                                );
-                            })}
-                        </div>
-                    </Card>
-
-                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-sm font-extrabold text-[#080e1e] flex items-center gap-2">
-                                <Users className="w-4 h-4 text-[#cbb28d]" /> Active Patient Telemetry
-                            </h2>
-                            <button className="text-xs font-bold text-[#8c7657] hover:underline" onClick={() => router.push('/dashboard/patients')}>
-                                View All
-                            </button>
-                        </div>
-
-                        <div className="space-y-3">
-                            {telemetryPatients.length === 0 ? (
-                                <p className="text-center py-4 text-slate-500 text-xs italic">No active telemetry.</p>
-                            ) : telemetryPatients.map(p => (
-                                <div key={p.id} onClick={() => router.push(`/dashboard/patients/${p.id}`)} className="flex items-center justify-between p-3 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] cursor-pointer transition-all duration-200">
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="w-8 h-8 rounded-full bg-[#080e1e] text-[#cbb28d] text-xs font-bold flex items-center justify-center border border-[#cbb28d]/30">
-                                            {p.first_name[0]}
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-[#080e1e]">{p.first_name} {p.last_name}</p>
-                                            <p className="text-[10px] text-[#8c7657] font-bold">Vitals Sync Active</p>
-                                        </div>
+                                    <div className="flex shrink-0 items-center gap-3">
+                                        <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30">Active</span>
+                                        <span aria-hidden="true" className="w-8 h-8 rounded-full bg-white border border-[#ded8c4] flex items-center justify-center text-[#080e1e] group-hover:bg-[#080e1e] group-hover:text-white transition-colors">
+                                            <ChevronRight className="w-4 h-4" />
+                                        </span>
                                     </div>
-                                    <span className="w-2 h-2 rounded-full bg-[#cbb28d] animate-pulse" />
-                                </div>
+                                </Link>
                             ))}
                         </div>
                     </Card>
                 </div>
+
             </div>
         </div>
     );
@@ -254,27 +174,41 @@ function AdminDashboard() {
 // CLINIC DASHBOARD
 // ─────────────────────────────────────────────────────────────────
 function ClinicDashboard() {
+    const greeting = useTimeGreeting();
     const { user } = useAuth();
     const router = useRouter();
-    const [patients, setPatients] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>(null);
+    const [error, setError] = useState('');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user?.token) return;
-        axios.get('/api/v1/patients', {
-            headers: { Authorization: `Bearer ${user.token}` },
-        })
-            .then(res => setPatients(res.data))
-            .catch(() => { })
-            .finally(() => setLoading(false));
+        const controller = new AbortController();
+        const refresh = async () => {
+            try {
+                const { data } = await axios.get('/api/v1/dashboard/clinic/stats', {
+                    headers: { Authorization: `Bearer ${user.token}` }, signal: controller.signal,
+                });
+                setStats(data);
+                setError('');
+            } catch {
+                if (!controller.signal.aborted) setError('Dashboard data could not be refreshed. Please try again.');
+            } finally { if (!controller.signal.aborted) setLoading(false); }
+        };
+        void refresh();
+        const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+        const timer = window.setInterval(onVisible, 30000);
+        window.addEventListener('focus', onVisible);
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            controller.abort(); window.clearInterval(timer);
+            window.removeEventListener('focus', onVisible);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
     }, [user?.token]);
 
-    const total = patients.length;
-    const active = patients.filter(p => p.workflows?.[0]?.status && p.workflows[0].status !== 'COMPLETED').length;
-    const resultsReady = patients.filter(p => p.workflows?.[0]?.status === 'RESULTS_READY').length;
-    const completed = patients.filter(p => p.workflows?.[0]?.status === 'COMPLETED').length;
-
-    const attentionPatients = patients.filter(p => ['RESULTS_READY', 'SAMPLE_COLLECTED', 'KIT_SHIPPED'].includes(p.workflows?.[0]?.status)).slice(0, 3);
+    const patients: any[] = stats?.tables.recentPatients || [];
+    const count = (key: string) => stats?.kpi[key] == null ? '--' : String(stats.kpi[key]);
 
     if (loading) return <MediqSkeleton />;
 
@@ -283,7 +217,7 @@ function ClinicDashboard() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#080e1e]">
-                        Hello, Dr. {user?.name?.split(' ')[0] || user?.name}
+                        {greeting && `${greeting}!`}
                     </h1>
                 </div>
                 <Button className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full gap-2 px-5 h-10 shadow-sm self-start" onClick={() => router.push('/dashboard/patients/add')}>
@@ -291,27 +225,27 @@ function ClinicDashboard() {
                 </Button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <MediqStatCard title="Active Patients" value={String(total)} icon={Users} />
-                <MediqStatCard title="Active Workflows" value={String(active)} icon={Activity} />
-                <MediqStatCard title="Results Ready" value={String(resultsReady)} icon={FlaskConical} />
-                <MediqStatCard title="Completed Sessions" value={String(completed)} icon={CheckCircle} />
+            {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+            <div className="grid gap-4 sm:grid-cols-3">
+                <MediqStatCard title="Total Patients" value={count("totalPatients")} icon={Users} href="/dashboard/patients" />
+                <MediqStatCard title="Results Ready" value={count("resultsReady")} icon={FlaskConical} href="/dashboard/lab-results?tab=available" />
+                <MediqStatCard title="Awaiting Test Orders" value={count("awaitingTestOrders")} icon={Clock} href="/dashboard/lab-results?tab=pending" />
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-12">
-                <div className="lg:col-span-8 space-y-6">
+            <div className="space-y-6">
+                <div className="space-y-6">
                     <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-6">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-bold text-[#080e1e] flex items-center gap-2">
-                                <CalendarDays className="w-5 h-5 text-[#cbb28d]" /> Patient Diagnostics Pipeline
+                                <CalendarDays className="w-5 h-5 text-[#cbb28d]" /> Patient Diagnostics
                             </h2>
                         </div>
 
 
                         <div className="space-y-3">
                             {patients.length === 0 ? (
-                                <p className="text-center py-8 text-slate-500 text-xs italic">No patient records found.</p>
-                            ) : patients.slice(0, 5).map(p => {
+                                <p className="text-center py-8 text-slate-500 text-xs italic">No patients with results ready yet.</p>
+                            ) : patients.map(p => {
                                 const st = p.workflows?.[0]?.status || 'PATIENT_CREATED';
                                 const badgeInfo = STATUS_BADGES[st] || { bg: 'bg-[#080e1e]', text: 'text-[#cbb28d]' };
 
@@ -332,7 +266,7 @@ function ClinicDashboard() {
                                                     {p.first_name} {p.last_name}
                                                 </p>
                                                 <p className="text-xs text-slate-500">
-                                                    {p.workflows?.[0]?.test_type || 'General Diagnostic'}
+                                                    {p.workflows?.[0]?.test_type || 'No lab order yet'}
                                                 </p>
                                             </div>
                                         </div>
@@ -352,48 +286,28 @@ function ClinicDashboard() {
                     </Card>
                 </div>
 
-                <div className="lg:col-span-4 space-y-6">
-                    <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-sm font-extrabold text-[#080e1e] flex items-center gap-2">
-                                <AlertCircle className="w-4 h-4 text-rose-700" /> Needs Attention
-                            </h2>
-                        </div>
-                        <div className="space-y-3">
-                            {attentionPatients.length === 0 ? (
-                                <p className="text-center py-4 text-slate-500 text-xs italic">All clear.</p>
-                            ) : attentionPatients.map(p => {
-                                const st = p.workflows[0].status;
-                                let type = 'info';
-                                if (st === 'RESULTS_READY') type = 'urgent';
-                                else if (st === 'SAMPLE_COLLECTED') type = 'warning';
-
-                                return (
-                                    <AttentionItem key={p.id} title={STATUS_LABELS[st] || st} patient={`${p.first_name} ${p.last_name}`} time={new Date(p.workflows[0].created_at).toLocaleDateString()} type={type} onClick={() => router.push(`/dashboard/patients/${p.id}`)} />
-                                );
-                            })}
-                        </div>
-                    </Card>
-                </div>
             </div>
         </div>
     );
 }
 
-function MediqStatCard({ title, value, badge, icon: Icon, subText }: any) {
-    return (
-        <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-5 space-y-3 transition-transform hover:-translate-y-0.5 text-left">
+function MediqStatCard({ title, value, badge, icon: Icon, subText, caption, href }: any) {
+    const card = (
+        <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-5 sm:p-6 h-full gap-6 transition-transform hover:-translate-y-0.5 text-left">
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                <div className="flex min-w-0 items-center gap-3 text-xs font-bold text-slate-500">
+                    <div className="p-3 shrink-0 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
                         <Icon className="w-6 h-6" />
                     </div>
-                    <span className="uppercase text-xs font-mono font-black tracking-widest text-[#080e1e] whitespace-nowrap">{title}</span>
+                    <span className="uppercase text-xs font-mono font-black tracking-widest text-[#080e1e] min-w-0 break-words">{title}</span>
                 </div>
             </div>
 
             <div className="flex items-baseline justify-between pt-1">
-                <span className="text-3xl font-extrabold text-[#080e1e] tracking-tight">{value}</span>
+                <div>
+                    <span className="text-3xl font-extrabold text-[#080e1e] tracking-tight">{value}</span>
+                    {caption && <p className="mt-2 text-xs text-slate-500">{caption}</p>}
+                </div>
                 {badge && (
                     <span className="text-xs font-bold text-[#080e1e] bg-[#e4dec3]/50 px-2.5 py-0.5 rounded-full border border-[#cbb28d]/30">
                         {badge}
@@ -409,32 +323,15 @@ function MediqStatCard({ title, value, badge, icon: Icon, subText }: any) {
             )}
         </Card>
     );
-}
-
-function AttentionItem({ title, patient, time, type, onClick }: any) {
-    return (
-        <div onClick={onClick} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/60 border border-[#e6e0ce] hover:border-[#080e1e] cursor-pointer transition-all duration-200">
-            <div className="flex items-center gap-3">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${type === 'urgent' ? 'bg-rose-900/15 text-rose-800' : 'bg-[#080e1e] text-[#cbb28d]'
-                    }`}>
-                    !
-                </div>
-                <div>
-                    <p className="text-xs font-bold text-[#080e1e]">{title}</p>
-                    <p className="text-[10px] text-slate-500">{patient} • {time}</p>
-                </div>
-            </div>
-            <MoreVertical className="w-4 h-4 text-slate-400 cursor-pointer" />
-        </div>
-    );
+    return href ? <Link href={href} className="block h-full rounded-3xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c7657]">{card}</Link> : card;
 }
 
 function MediqSkeleton() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <Skeleton className="h-10 w-64 bg-[#e4dec3]/50 rounded-xl" />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
+            <div className="grid gap-4 sm:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
                     <Skeleton key={i} className="h-32 rounded-3xl bg-white shadow-xs" />
                 ))}
             </div>

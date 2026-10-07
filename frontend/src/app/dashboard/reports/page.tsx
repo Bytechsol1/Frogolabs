@@ -75,7 +75,7 @@ export default function ReportsPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-extrabold tracking-tight text-primary">Reports</h1>
-                    <p className="text-muted-foreground mt-1 text-sm font-medium">View clinic performance, patient workflow activity, lab result status, and operational delays.</p>
+                    <p className="text-muted-foreground mt-1 text-sm font-medium">View clinic performance, patient session activity, lab result status, and operational delays.</p>
                 </div>
                 <div className="flex items-center gap-2">
                 </div>
@@ -88,7 +88,7 @@ export default function ReportsPage() {
                     {[
                         { label: 'Date Range', opts: ['This Month', 'Today', 'This Week', 'Last Month', 'Custom'] },
                         { label: 'Clinic', opts: ['All Clinics', 'Austin Family Clinic', 'Green Valley Clinic'] },
-                        { label: 'Workflow', opts: ['All', 'Active', 'Completed', 'Delayed'] },
+                        { label: 'Session', opts: ['All', 'Active', 'Completed', 'Delayed'] },
                         { label: 'Lab Status', opts: ['All', 'Pending', 'Available', 'Sent to Clinic'] },
                     ].map(f => (
                         <select key={f.label} className="bg-background border rounded-md px-3 py-2 text-sm outline-none focus:ring-2 ring-primary/20" defaultValue={f.opts[0]}>
@@ -103,10 +103,10 @@ export default function ReportsPage() {
             {/* Summary Cards */}
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-6">
                 <SCard title="Total Patients" value={248} icon={Users} color="text-primary" />
-                <SCard title="Active Workflows" value={37} icon={Activity} color="text-indigo-500" />
-                <SCard title="Completed Workflows" value={184} icon={CheckCircle2} color="text-emerald-500" />
+                <SCard title="Active Sessions" value={37} icon={Activity} color="text-indigo-500" />
+                <SCard title="Completed Sessions" value={184} icon={CheckCircle2} color="text-emerald-500" />
                 <SCard title="Pending Lab Results" value={16} icon={Clock} color="text-amber-500" />
-                <SCard title="Delayed Workflows" value={5} icon={AlertTriangle} color="text-rose-500" />
+                <SCard title="Delayed Sessions" value={5} icon={AlertTriangle} color="text-rose-500" />
                 <SCard title="Avg Turnaround" value="4.2d" icon={BarChart3} color="text-blue-500" />
             </div>
 
@@ -152,7 +152,7 @@ export default function ReportsPage() {
             </SectionCard>
 
             {/* Workflow Breakdown Chart */}
-            <SectionCard title="Workflow Status Breakdown" icon={<Activity className="w-4 h-4 text-indigo-500" />}>
+            <SectionCard title="Session Status Breakdown" icon={<Activity className="w-4 h-4 text-indigo-500" />}>
                 <div className="p-4 space-y-3">
                     {WORKFLOW_BREAKDOWN.map(s => (
                         <div key={s.stage} className="flex items-center gap-3">
@@ -198,11 +198,11 @@ export default function ReportsPage() {
             </SectionCard>
 
             {/* Delayed Workflows */}
-            <SectionCard title="Delayed Workflow Report" icon={<AlertCircle className="w-4 h-4 text-rose-500" />}>
+            <SectionCard title="Delayed Session Report" icon={<AlertCircle className="w-4 h-4 text-rose-500" />}>
                 <Table>
                     <TableHeader className="bg-muted/30 border-b">
                         <TableRow className="hover:bg-transparent">
-                            {['Workflow ID', 'Patient', 'Clinic', 'Stage', 'Days', 'Delay Reason', 'Priority', 'Actions'].map(h => (
+                            {['Session ID', 'Patient', 'Clinic', 'Stage', 'Days', 'Delay Reason', 'Priority', 'Actions'].map(h => (
                                 <TableHead key={h} className="font-bold text-xs uppercase tracking-wider">{h}</TableHead>
                             ))}
                         </TableRow>
@@ -240,7 +240,7 @@ export default function ReportsPage() {
                     <div className="grid gap-4 py-4">
                         <FormRow label="Report Type">
                             <select className="w-full bg-background border rounded-md px-3 py-2 text-sm outline-none" defaultValue="Full Report">
-                                {['Full Report', 'Clinic Performance Report', 'Lab Results Report', 'Delayed Workflow Report'].map(o => <option key={o}>{o}</option>)}
+                                {['Full Report', 'Clinic Performance Report', 'Lab Results Report', 'Delayed Session Report'].map(o => <option key={o}>{o}</option>)}
                             </select>
                         </FormRow>
                         <FormRow label="Date Range">
@@ -255,7 +255,7 @@ export default function ReportsPage() {
                         </FormRow>
                         <div className="flex flex-col gap-2 pt-1">
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" defaultChecked className="w-4 h-4 rounded" /> Include Charts</label>
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" defaultChecked className="w-4 h-4 rounded" /> Include Delayed Workflows</label>
+                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" defaultChecked className="w-4 h-4 rounded" /> Include Delayed Sessions</label>
                         </div>
                     </div>
                     <DialogFooter className="gap-2">

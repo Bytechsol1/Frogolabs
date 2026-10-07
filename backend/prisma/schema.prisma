@@ -35,6 +35,7 @@ model User {
   name          String
   email         String    @unique
   password_hash String
+  email_verified Boolean @default(false)
   role          Role      @default(CLINIC_USER)
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
@@ -45,12 +46,13 @@ model User {
 }
 
 model Clinic {
+  is_demo      Boolean  @default(false)
   id           String    @id @default(uuid())
   name         String
   contact_name String
   email        String?   @unique
   phone        String?
-  status       String?
+  status       String?   @default("Active")
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
 
@@ -61,6 +63,7 @@ model Clinic {
 }
 
 model Patient {
+  is_demo    Boolean  @default(false)
   id         String     @id @default(uuid())
   clinic_id  String
   first_name      String
@@ -71,15 +74,19 @@ model Patient {
   address         String     @default("")
   postal_code     String     @default("")
   dob             DateTime?
+  age             Int?
+  gender          String?
   created_at      DateTime   @default(now())
   updated_at      DateTime   @updatedAt
   validic_user_id        String?
   validic_marketplace_url String?
 
-  clinic     Clinic     @relation(fields: [clinic_id], references: [id])
-  workflows  Workflow[]
-  results    LabResult[]
-  metrics    HealthMetric[]
+  clinic      Clinic         @relation(fields: [clinic_id], references: [id])
+  workflows   Workflow[]
+  results     LabResult[]
+  metrics     HealthMetric[]
+  terraOrders TerraOrder[]
+  sandboxReportJobs SandboxReportJob[]
 }
 
 model Workflow {
@@ -96,6 +103,7 @@ model Workflow {
   history    WorkflowHistory[]
   results    LabResult[]
   notifications Notification[]
+  terraOrders TerraOrder[]
 }
 
 model WorkflowHistory {
@@ -103,31 +111,103 @@ model WorkflowHistory {
   workflow_id String
   status      String
   notes       String?
-  updated_by  String
+  updated_by  String?
   created_at  DateTime @default(now())
 
   workflow    Workflow @relation(fields: [workflow_id], references: [id])
-  user        User     @relation(fields: [updated_by], references: [id])
+  user        User?    @relation(fields: [updated_by], references: [id])
 }
 
 model LabResult {
-  id          String    @id @default(uuid())
-  workflow_id String?
-  patient_id  String
-  clinic_id   String?
-  file_url    String
-  file_name   String?
-  test_name   String?
-  result_date DateTime?
-  status      String    @default("Available")
-  notes       String?
-  uploaded_by String
-  uploaded_at DateTime  @default(now())
+  id                String    @id @default(uuid())
+  workflow_id       String?
+  patient_id        String
+  clinic_id         String?
+  file_url          String
+  file_name         String?
+  test_name         String?
+  result_date       DateTime?
+  status            String    @default("Available")
+  notes             String?
+  uploaded_by       String?   // null for results ingested automatically from Terra (no clinic uploader)
+  uploaded_at       DateTime  @default(now())
+  source            String    @default("MANUAL") // "MANUAL" (clinic file upload) | "TERRA" (Terra Vantage result)
+  structured_report Json?     // sanitized biomarker data parsed from Terra's FHIR result bundle; never contains Terra IDs/URLs
 
-  workflow    Workflow? @relation(fields: [workflow_id], references: [id])
-  patient     Patient   @relation(fields: [patient_id], references: [id])
-  clinic      Clinic?   @relation(fields: [clinic_id], references: [id])
-  user        User      @relation(fields: [uploaded_by], references: [id])
+  workflow    Workflow?   @relation(fields: [workflow_id], references: [id])
+  patient     Patient     @relation(fields: [patient_id], references: [id])
+  clinic      Clinic?     @relation(fields: [clinic_id], references: [id])
+  user        User?       @relation(fields: [uploaded_by], references: [id])
+  access      LabResultAccess?
+  terraOrders TerraOrder[]
+}
+
+model LabResultAccess {
+  id                String    @id @default(uuid())
+  lab_result_id     String    @unique
+  result_code       String    @unique
+  access_code_hash  String
+  expires_at        DateTime
+  access_count      Int       @default(0)
+  last_accessed_at  DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  lab_result        LabResult @relation(fields: [lab_result_id], references: [id], onDelete: Cascade)
+}
+
+model TerraOrder {
+  environment         String     @default("SANDBOX")
+  id                  String     @id @default(uuid())
+  workflow_id         String?    @unique
+  collection_type     String?
+  patient_id          String
+  terra_order_id      String     @unique
+  client_reference_id String?    @unique
+  terra_product_id    String     // Terra variant_id the order was placed against
+  terra_order_status  String     // order.* fulfilment status, from Terra's order.status_changed webhook
+  terra_order_item_id String?    // order_item_id from the order, used to match order_item.results_status_change events
+  terra_test_taker_id String?    // test_taker_id from the results webhook, required to call GET /api/v1/results/{orderItemId}
+  results_status      String?    // results.* status, from Terra's order_item.results_status_change webhook
+  tracking_number      String?   // shipment/fulfillment tracking number, from order.status_changed webhook data
+  escalation_level    String?    // escalation_level, from Terra's order_item.results_status_change webhook (if present)
+  lab_result_id       String?    // linked FrigoFlow LabResult once a result has been fetched from Terra; 1:1 enforced in application code
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+
+  patient             Patient    @relation(fields: [patient_id], references: [id])
+  workflow            Workflow?  @relation(fields: [workflow_id], references: [id])
+  labResult           LabResult? @relation(fields: [lab_result_id], references: [id])
+  sandboxReportJob    SandboxReportJob?
+}
+
+// Durable, opt-in development sandbox automation. Never schedules real lab results.
+model SandboxReportJob {
+  id              String   @id @default(uuid())
+  patient_id      String
+  order_id        String?  @unique
+  variant_id      String
+  test_name       String
+  country_code    String
+  status          String   @default("QUEUED")
+  due_at          DateTime
+  next_attempt_at DateTime @default(now())
+  attempts        Int      @default(0)
+  last_error      String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  patient Patient     @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  order   TerraOrder? @relation(fields: [order_id], references: [id])
+
+  @@index([status, next_attempt_at])
+}
+
+model TerraWebhookEvent {
+  id          String   @id @default(uuid())
+  event_id    String   @unique
+  event_type  String
+  received_at DateTime @default(now())
 }
 
 model Notification {
@@ -145,10 +225,25 @@ model Notification {
 model OtpVerification {
   id           String   @id @default(uuid())
   email        String   @unique
-  otp          String
-  pending_data Json
+  otp          String?  @ignore // Legacy column cleared by the OTP migration; never written.
+  pending_data Json?
+  user_id      String?
+  otp_hash     String?
+  purpose      String   @default("EMAIL_VERIFICATION")
+  attempt_count Int     @default(0)
+  verified_at  DateTime?
+  invalidated_at DateTime?
+  last_sent_at DateTime?
   expires_at   DateTime
   created_at   DateTime @default(now())
+}
+
+model AuthRateLimit {
+  key          String   @id
+  attempts     Int      @default(1)
+  resets_at    DateTime
+
+  @@index([resets_at])
 }
 
 model HealthMetric {

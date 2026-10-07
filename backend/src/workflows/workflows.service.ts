@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { displayedWorkflowWhere } from '../dashboard/live-data';
 
 @Injectable()
 export class WorkflowsService {
@@ -7,7 +8,7 @@ export class WorkflowsService {
 
     async findAll(clinic_id: string | null): Promise<any[]> {
         return this.prisma.workflow.findMany({
-            where: clinic_id ? { clinic_id } : undefined,
+            where: { ...displayedWorkflowWhere(), ...(clinic_id ? { clinic_id } : {}) },
             include: {
                 patient: { select: { first_name: true, last_name: true, email: true, phone: true } },
                 clinic: { select: { name: true } },
@@ -31,7 +32,7 @@ export class WorkflowsService {
                 results: true,
             },
         });
-        if (!workflow) throw new NotFoundException('Workflow not found');
+        if (!workflow) throw new NotFoundException('Session not found');
         return workflow;
     }
 
@@ -45,7 +46,7 @@ export class WorkflowsService {
                 history: {
                     create: {
                         status: 'PATIENT_CREATED' as any,
-                        notes: 'Workflow initiated',
+                        notes: 'Session initiated',
                         updated_by,
                     },
                 },
@@ -57,7 +58,7 @@ export class WorkflowsService {
         await this.findOne(id, clinic_id);
         const { status, notes, updated_by } = data;
         return this.prisma.workflow.update({
-            where: { id },
+            where: { id, ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) },
             data: {
                 status: status as any,
                 history: {

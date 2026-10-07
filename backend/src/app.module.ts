@@ -12,6 +12,8 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { LabResultsModule } from './lab-results/lab-results.module';
 import { ValidicModule } from './validic/validic.module';
+import { PatientAccessModule } from './patient-access/patient-access.module';
+import { TerraModule } from './terra/terra.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { ValidicModule } from './validic/validic.module';
     DashboardModule,
     LabResultsModule,
     ValidicModule,
+    PatientAccessModule,
+    TerraModule,
   ],
   controllers: [AppController],
   providers: [AppService],

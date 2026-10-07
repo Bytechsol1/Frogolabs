@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { useAuth } from "@/context/AuthContext";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import {
     ChevronLeft,
     Calendar,
@@ -19,25 +20,19 @@ import {
     History as HistoryIcon,
     CheckCircle2,
     Circle,
-    Download,
+    Eye,
     FileUp,
     Activity,
     FlaskConical,
-    ClipboardList,
     PhoneCall,
     CalendarPlus
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
+import { cn, getPatientDisplayId } from "@/lib/utils";
 import { VitalsDashboard } from "@/components/vitals/VitalsDashboard";
-import { Input } from "@/components/ui/input";
+import { OrderLabTestModal } from "@/components/patients/OrderLabTestModal";
+import { TerraOrdersSection, TerraReportEmptyState } from "@/components/patients/TerraOrdersSection";
+import { SandboxReportStatus } from "@/components/patients/SandboxReportStatus";
+import { LabReportPreview, type LabReport } from "@/components/patients/LabReportPreview";
 
 const WORKFLOW_STATUSES = [
     { key: 'PATIENT_CREATED', label: 'Patient Created' },
@@ -51,15 +46,31 @@ const WORKFLOW_STATUSES = [
 ];
 
 export default function PatientDetailsPage() {
+    return <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading patient...</div>}><PatientDetailsContent /></Suspense>;
+}
+
+function PatientDetailsContent() {
+    const searchParams = useSearchParams();
+    const requestedReportId = searchParams.get('report');
+    const [selectedTab, setSelectedTab] = useState(() => {
+        const tab = searchParams.get('tab');
+        return tab && ['vitals', 'history', 'results', 'notes'].includes(tab) ? tab : 'vitals';
+    });
+    const [scheduleOpen, setScheduleOpen] = useState(false);
     const { id } = useParams();
     const { user } = useAuth();
     const router = useRouter();
     const [patient, setPatient] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [isUpdateOpen, setIsUpdateOpen] = useState(false);
-    const [newStatus, setNewStatus] = useState('');
-    const [statusNote, setStatusNote] = useState('');
-    const [saving, setSaving] = useState(false);
+    const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+    const [refreshFailed, setRefreshFailed] = useState(false);
+    const [orderSuccessMessage, setOrderSuccessMessage] = useState('');
+    const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        setSelectedTab(tab && ['vitals', 'history', 'results', 'notes'].includes(tab) ? tab : 'vitals');
+        setSelectedReportId(tab === 'results' ? searchParams.get('report') : null);
+    }, [searchParams]);
 
     const fetchPatient = useCallback(async () => {
         if (!user?.token || !id) return;
@@ -68,7 +79,10 @@ export default function PatientDetailsPage() {
                 headers: { Authorization: `Bearer ${user.token}` }
             });
             setPatient(res.data);
+            setLastRefreshed(new Date());
+            setRefreshFailed(false);
         } catch (err) {
+            setRefreshFailed(true);
             console.error("Failed to load patient details", err);
         } finally {
             setLoading(false);
@@ -77,10 +91,55 @@ export default function PatientDetailsPage() {
 
     useEffect(() => {
         fetchPatient();
-    }, [fetchPatient]);
+        const refresh = () => { if (document.visibilityState === 'visible') void fetchPatient(); };
+        const timer = window.setInterval(refresh, 30000);
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+    }, [fetchPatient, requestedReportId]);
 
     const activeWorkflow = useMemo(() => {
         return patient?.workflows?.[0];
+    }, [patient]);
+
+    const historyStages = useMemo(() => {
+        const history: { id: string; status: string; created_at: string; notes?: string | null; user?: { name: string } | null }[] = activeWorkflow?.history || [];
+        const order = patient?.terraOrders?.find((item: { workflow_id?: string }) => item.workflow_id === activeWorkflow?.id);
+        return WORKFLOW_STATUSES.flatMap(stage => {
+            const events = history.filter(event => event.status === stage.key)
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            if (events.length) return events.map(event => ({
+                id: event.id, key: stage.key, label: stage.label, pending: false, notApplicable: false,
+                simulated: event.notes?.startsWith('Sandbox demo:') === true,
+                updatedBy: event.notes?.startsWith('Sandbox demo:') ? 'Sandbox demo' : event.user?.name || (stage.key === 'PATIENT_CREATED' ? 'Frigo Flow' : 'Terra'),
+                date: event.created_at,
+            }));
+            // Registration is a real patient event even if an older session never
+            // wrote a separate PATIENT_CREATED entry. Never invent stage times.
+            const registered = stage.key === 'PATIENT_CREATED' && !!patient?.created_at;
+            const notApplicable = stage.key === 'KIT_SHIPPED' && order?.collection_type === 'GO_TO_LAB';
+            return [{
+                id: stage.key, key: stage.key, label: stage.label, pending: !registered, notApplicable,
+                simulated: false,
+                updatedBy: registered ? 'Frigo Flow' : null,
+                date: registered ? patient.created_at as string : null,
+            }];
+        });
+    }, [activeWorkflow, patient]);
+
+    const reports = useMemo<LabReport[]>(() => {
+        return [...(patient?.results || [])].sort((a, b) =>
+            new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+        );
+    }, [patient]);
+    const selectedReport = reports.find(report => report.id === selectedReportId);
+
+    const age = useMemo(() => {
+        if (typeof patient?.age === 'number') return patient.age;
+        if (!patient?.dob) return null;
+        const dob = new Date(patient.dob);
+        const diff = Date.now() - dob.getTime();
+        return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
     }, [patient]);
 
     if (loading) return (
@@ -91,7 +150,7 @@ export default function PatientDetailsPage() {
     );
     if (!patient) return <div className="p-8 text-rose-700 font-bold">Diagnostic record not found.</div>;
 
-    const mockPatientId = `ID ${1000000 + (parseInt(patient.id.slice(-4), 16) || 4762391)}`;
+    const mockPatientId = getPatientDisplayId(patient.id);
 
     return (
         <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-500 pb-8">
@@ -108,17 +167,24 @@ export default function PatientDetailsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {user?.role === 'ADMIN' && activeWorkflow && (
-                        <Button
-                            size="sm"
-                            className="gap-2 bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full h-9 px-4 shadow-xs"
-                            onClick={() => { setNewStatus(activeWorkflow.status); setStatusNote(''); setIsUpdateOpen(true); }}
-                        >
-                            <ClipboardList className="w-4 h-4 text-[#cbb28d]" /> Update Workflow
-                        </Button>
+                    {user?.role === 'CLINIC_USER' && (
+                        <OrderLabTestModal
+                            patient={patient}
+                            onOrderCreated={() => {
+                                setOrderSuccessMessage('Lab test order placed successfully with Terra Vantage.');
+                                void fetchPatient();
+                            }}
+                        />
                     )}
                 </div>
             </div>
+
+            {orderSuccessMessage && (
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                    <span>{orderSuccessMessage}</span>
+                    <button onClick={() => setOrderSuccessMessage('')} className="text-emerald-600 hover:text-emerald-900 font-mono">✕</button>
+                </div>
+            )}
 
             {/* Patient Hero Card */}
             <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-6">
@@ -139,48 +205,60 @@ export default function PatientDetailsPage() {
                                     <PhoneCall className="w-3.5 h-3.5 text-[#cbb28d]" /> Call
                                 </Button>
                             </a>
-                            <Button size="sm" variant="outline" className="w-full bg-white border-[#ded8c4] text-[#080e1e] font-bold text-xs rounded-full gap-1.5 h-9" onClick={() => alert('Appointment schedule feature coming soon!')}>
-                                <CalendarPlus className="w-3.5 h-3.5" /> Schedule
-                            </Button>
+                            <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+                                <DialogTrigger render={<Button size="sm" variant="outline" className="w-full bg-white border-[#ded8c4] text-[#080e1e] font-bold text-xs rounded-full gap-1.5 h-9" />}>
+                                    <CalendarPlus className="w-3.5 h-3.5" /> Schedule
+                                </DialogTrigger>
+                                <DialogContent className="gap-6 rounded-3xl border border-[#e4dec3] bg-white p-6 text-[#080e1e] shadow-xl ring-0 sm:max-w-md sm:p-8">
+                                    <DialogHeader>
+                                        <span className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#080e1e] text-[#cbb28d]">
+                                            <CalendarPlus className="h-6 w-6" aria-hidden="true" />
+                                        </span>
+                                        <DialogTitle className="text-xl font-bold">Schedule Appointment</DialogTitle>
+                                        <DialogDescription className="break-words text-sm text-slate-500">
+                                            {patient.first_name} {patient.last_name}
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="rounded-2xl border border-[#e6e0ce] bg-[#faf8f3] px-5 py-7 text-center">
+                                        <p className="text-xl font-bold text-[#080e1e]">Coming Soon</p>
+                                        <p className="mt-2 text-sm leading-relaxed text-slate-500">Appointment scheduling will be available here soon.</p>
+                                    </div>
+                                    <DialogClose render={<Button className="h-11 w-full rounded-full bg-[#080e1e] font-semibold text-white hover:bg-[#121c36]" />}>Close</DialogClose>
+                                </DialogContent>
+                            </Dialog>
                         </div>
                     </div>
 
                     {/* Right Key Patient Metrics Grid */}
-                    <div className="lg:col-span-8 space-y-6">
+                    <div className="min-w-0 lg:col-span-8 space-y-6">
                         <div className="flex items-center justify-between">
                             <div>
                                 <span className="text-xs font-bold text-[#8c7657] font-mono block">{mockPatientId}</span>
                                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#080e1e]">{patient.first_name} {patient.last_name}</h1>
                             </div>
                             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30">
-                                {WORKFLOW_STATUSES.find(s => s.key === activeWorkflow?.status)?.label || activeWorkflow?.status?.replace(/_/g, ' ') || 'Active Under Treatment'}
+                                FrigoFlow Session: {WORKFLOW_STATUSES.find(s => s.key === activeWorkflow?.status)?.label || activeWorkflow?.status?.replace(/_/g, ' ') || 'Active Under Treatment'}
                             </span>
                         </div>
 
                         {/* Metric Columns */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-white/60 border border-[#e6e0ce] text-center sm:text-left">
-                            <div>
+                        <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)] items-start gap-x-6 gap-y-4 px-6 py-4 rounded-2xl bg-white/60 border border-[#e6e0ce] text-left">
+                            <div className="min-w-0 space-y-1">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Gender</span>
-                                <span className="text-sm font-bold text-[#080e1e]">Female</span>
+                                <span className="block text-sm font-bold text-[#080e1e] break-words">{patient.gender || 'Not specified'}</span>
                             </div>
-                            <div>
+                            <div className="min-w-0 space-y-1">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Age</span>
-                                <span className="text-sm font-bold text-[#080e1e]">34</span>
+                                <span className="block text-sm font-bold text-[#080e1e] break-words">{age ?? 'Not specified'}</span>
                             </div>
-                            <div>
+                            <div className="min-w-0 space-y-1">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Primary Diagnosis</span>
-                                <span className="text-sm font-bold text-[#080e1e]">{activeWorkflow?.test_type || 'Hypertension'}</span>
+                                <span className="block text-sm font-bold text-[#080e1e] break-words">{activeWorkflow?.test_type || 'Not specified'}</span>
                             </div>
-                            <div>
+                            <div className="min-w-0 space-y-1">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Last Visit</span>
-                                <span className="text-sm font-bold text-[#080e1e]">{new Date(patient.created_at).toLocaleDateString()}</span>
+                                <span className="block text-sm font-bold text-[#080e1e] tabular-nums">{new Date(patient.created_at).toLocaleDateString()}</span>
                             </div>
-                        </div>
-
-                        {/* Status Note Pill */}
-                        <div className="p-3 rounded-2xl bg-white border border-[#ded8c4] text-xs font-medium text-[#080e1e] flex items-center justify-between">
-                            <span>Patient shows steady biometric progress with current treatment plan.</span>
-                            <ChevronLeft className="w-4 h-4 rotate-180 text-[#8c7657]" />
                         </div>
                     </div>
 
@@ -188,18 +266,18 @@ export default function PatientDetailsPage() {
             </Card>
 
             {/* Main Tabs Container */}
-            <Tabs defaultValue="vitals" className="space-y-6">
+            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
                 <TabsList className="bg-white/10 p-1 rounded-full border border-white/20 inline-flex shadow-xs">
-                    <TabsTrigger value="vitals" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                    <TabsTrigger value="vitals" className="text-xs font-bold text-black hover:text-black dark:text-black dark:hover:text-black rounded-full px-5 py-2 data-active:bg-white data-active:text-black dark:data-active:text-black transition-none">
                         Vitals & Telemetry
                     </TabsTrigger>
-                    <TabsTrigger value="history" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                    <TabsTrigger value="history" className="text-xs font-bold text-black hover:text-black dark:text-black dark:hover:text-black rounded-full px-5 py-2 data-active:bg-white data-active:text-black dark:data-active:text-black transition-none">
                         Status History
                     </TabsTrigger>
-                    <TabsTrigger value="results" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                    <TabsTrigger value="results" className="text-xs font-bold text-black hover:text-black dark:text-black dark:hover:text-black rounded-full px-5 py-2 data-active:bg-white data-active:text-black dark:data-active:text-black transition-none">
                         Lab Reports
                     </TabsTrigger>
-                    <TabsTrigger value="notes" className="text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                    <TabsTrigger value="notes" className="text-xs font-bold text-black hover:text-black dark:text-black dark:hover:text-black rounded-full px-5 py-2 data-active:bg-white data-active:text-black dark:data-active:text-black transition-none">
                         Physician Notes
                     </TabsTrigger>
                 </TabsList>
@@ -218,36 +296,39 @@ export default function PatientDetailsPage() {
                 <TabsContent value="history" className="animate-in fade-in duration-300">
                     <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] overflow-hidden">
                         <CardHeader className="border-b border-[#e6e0ce] bg-white/60">
-                            <CardTitle className="text-base font-bold text-[#080e1e]">Status History Log</CardTitle>
+                            <CardTitle className="text-base font-bold text-[#080e1e]">FrigoFlow Session History</CardTitle>
+                            <p className="text-xs text-slate-500">All stages are shown below. Refreshes every 30 seconds; pending stages update when confirmed.</p>
+                            {lastRefreshed && <p className="text-[11px] text-[#8c7657]">Last checked: {lastRefreshed.toLocaleTimeString()}</p>}
+                            {refreshFailed && <p role="alert" className="text-xs text-rose-700">Could not refresh status. Retrying automatically.</p>}
                         </CardHeader>
                         <CardContent className="p-0">
                             <Table>
                                 <TableHeader className="bg-[#f2ede0]/80 border-b border-[#e6e0ce]">
                                     <TableRow>
-                                        <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Status</TableHead>
+                                        <TableHead className="pl-5 font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Status</TableHead>
                                         <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Updated By</TableHead>
-                                        <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-right">Date & Time</TableHead>
+                                        <TableHead className="pr-5 font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e] text-right">Date & Time</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {activeWorkflow?.history.map((h: any) => (
-                                        <TableRow key={h.id} className="border-b border-[#e6e0ce] hover:bg-[#f3eee0]">
-                                            <TableCell>
-                                                <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#080e1e] text-[#cbb28d]">
-                                                    {h.status.replace(/_/g, ' ')}
-                                                </span>
+                                    {historyStages.map(stage => (
+                                        <TableRow key={stage.id} data-stage={stage.key} data-state={stage.notApplicable ? 'not-applicable' : stage.pending ? 'pending' : 'confirmed'} className="border-b border-[#e6e0ce]">
+                                            <TableCell className="pl-5">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${stage.pending ? 'border border-[#e6e0ce] bg-[#faf9f6] text-slate-500' : 'bg-[#080e1e] text-[#cbb28d]'}`}>
+                                                        {stage.pending ? <Circle className="h-3 w-3 shrink-0" aria-hidden="true" /> : <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                                                        {stage.label}
+                                                    </span>
+                                                    {stage.pending && <span className="text-[11px] text-slate-500">{stage.notApplicable ? 'Not applicable' : 'Pending confirmation'}</span>}
+                                                    {stage.simulated && <span className="text-[11px] text-amber-700">Simulated · no message sent</span>}
+                                                </div>
                                             </TableCell>
-                                            <TableCell className="text-xs font-bold text-[#080e1e]">{h.user.name}</TableCell>
-                                            <TableCell className="text-right text-xs text-slate-500 font-mono">
-                                                {new Date(h.created_at).toLocaleString()}
+                                            <TableCell className="text-xs font-bold text-[#080e1e]">{stage.updatedBy || '—'}</TableCell>
+                                            <TableCell className="pr-5 text-right text-xs text-slate-500 font-mono">
+                                                {stage.date ? new Date(stage.date).toLocaleString() : '—'}
                                             </TableCell>
                                         </TableRow>
                                     ))}
-                                    {!activeWorkflow?.history.length && (
-                                        <TableRow>
-                                            <TableCell colSpan={3} className="h-24 text-center text-slate-500 italic text-xs">No status history logged.</TableCell>
-                                        </TableRow>
-                                    )}
                                 </TableBody>
                             </Table>
                         </CardContent>
@@ -255,34 +336,54 @@ export default function PatientDetailsPage() {
                 </TabsContent>
 
                 {/* Lab Results Tab */}
-                <TabsContent value="results" className="animate-in fade-in duration-300">
+                <TabsContent value="results" className="animate-in fade-in duration-300 space-y-6">
+                    <SandboxReportStatus jobs={patient.sandboxReportJobs || []} onRefresh={fetchPatient} />
+                    <TerraOrdersSection orders={patient.terraOrders || []} onRefresh={fetchPatient} />
+
                     <Card className="bg-white rounded-3xl border border-[#e4dec3]/70 shadow-[0_4px_25px_rgba(8,14,30,0.04)] p-6 space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-bold text-[#080e1e]">Diagnostic Reports</h3>
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">
-                            {activeWorkflow?.results.map((res: any) => (
-                                <div key={res.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/60 border border-[#e6e0ce]">
+                            {reports.map((res) => (
+                                <button
+                                    type="button"
+                                    key={res.id}
+                                    aria-pressed={selectedReport?.id === res.id}
+                                    aria-expanded={selectedReport?.id === res.id}
+                                    onClick={() => setSelectedReportId(current => current === res.id ? null : res.id)}
+                                    className={cn("flex items-center justify-between gap-3 p-4 rounded-2xl border text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#8c7657]", selectedReport?.id === res.id ? "bg-[#faf8f3] border-[#8c7657]" : "bg-white/60 border-[#e6e0ce] hover:bg-[#faf8f3]")}
+                                >
                                     <div className="flex items-center gap-3">
                                         <div className="p-2.5 rounded-xl bg-[#080e1e] text-[#cbb28d]">
                                             <FileText className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-[#080e1e]">Diagnostic Lab Report</p>
+                                            <p className="text-xs font-bold text-[#080e1e]">{res.test_name || 'Diagnostic Lab Report'}</p>
                                             <p className="text-[10px] text-slate-500">{new Date(res.uploaded_at).toLocaleDateString()}</p>
                                         </div>
                                     </div>
-                                    <Button variant="ghost" size="icon" className="text-[#080e1e] hover:bg-white rounded-full" onClick={() => window.open(res.file_url)}>
-                                        <Download className="w-4 h-4 text-[#cbb28d]" />
-                                    </Button>
-                                </div>
+                                    <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-[#8c7657]">
+                                        <Eye className="w-4 h-4" /> {selectedReport?.id === res.id ? 'Hide' : 'View'}
+                                    </span>
+                                </button>
                             ))}
-                            {!activeWorkflow?.results.length && (
+                            {!reports.length && (
                                 <div className="md:col-span-2 p-12 text-center text-slate-500 text-xs italic">
-                                    No lab result files attached.
+                                    <TerraReportEmptyState orders={patient.terraOrders || []} />
                                 </div>
                             )}
                         </div>
+                        {selectedReport && (
+                            <section aria-label="Selected lab report" className="space-y-4 border-t border-[#e6e0ce] pt-5">
+                                <div>
+                                    <h4 className="text-sm font-bold text-[#080e1e]">{selectedReport.test_name || 'Diagnostic Lab Report'}</h4>
+                                    <p className="mt-1 text-xs text-slate-500">{new Date(selectedReport.result_date || selectedReport.uploaded_at).toLocaleDateString()}</p>
+                                </div>
+                                <LabReportPreview report={selectedReport} />
+                                {selectedReport.notes && <p className="whitespace-pre-wrap text-sm text-slate-600">{selectedReport.notes}</p>}
+                            </section>
+                        )}
                     </Card>
                 </TabsContent>
 
@@ -303,57 +404,6 @@ export default function PatientDetailsPage() {
                 </TabsContent>
             </Tabs>
 
-            {/* Status Update Modal */}
-            <Dialog open={isUpdateOpen} onOpenChange={setIsUpdateOpen}>
-                <DialogContent className="bg-white border-[#e4dec3] rounded-3xl sm:max-w-[440px]">
-                    <DialogHeader>
-                        <DialogTitle className="text-[#080e1e] font-bold">Update Workflow Stage</DialogTitle>
-                        <DialogDescription className="text-xs text-slate-600">
-                            Advance workflow stage for {patient.first_name} {patient.last_name}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[#8c7657] uppercase">Target Status</label>
-                            <select
-                                className="w-full bg-white border border-[#ded8c4] rounded-xl px-3 py-2 text-xs font-bold text-[#080e1e] outline-none"
-                                value={newStatus}
-                                onChange={e => setNewStatus(e.target.value)}
-                            >
-                                {WORKFLOW_STATUSES.map(s => (
-                                    <option key={s.key} value={s.key}>{s.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <DialogFooter className="gap-2">
-                        <Button variant="outline" className="rounded-full text-xs font-bold border-[#ded8c4]" onClick={() => setIsUpdateOpen(false)}>Cancel</Button>
-                        <Button
-                            disabled={saving}
-                            className="bg-[#080e1e] hover:bg-[#121c36] text-[#f7f3e8] font-bold text-xs rounded-full"
-                            onClick={async () => {
-                                if (!activeWorkflow?.id || !newStatus) return;
-                                setSaving(true);
-                                try {
-                                    await axios.patch(
-                                        `/api/v1/workflows/${activeWorkflow.id}/status`,
-                                        { status: newStatus, notes: statusNote || undefined, updated_by: user?.sub },
-                                        { headers: { Authorization: `Bearer ${user?.token}` } }
-                                    );
-                                    setIsUpdateOpen(false);
-                                    await fetchPatient();
-                                } catch (err) {
-                                    console.error('Failed to update status', err);
-                                } finally {
-                                    setSaving(false);
-                                }
-                            }}
-                        >
-                            {saving ? 'Saving...' : 'Save Update'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }

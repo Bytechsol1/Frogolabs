@@ -2,32 +2,37 @@ import { Controller, Post, Get, Patch, UseGuards, Request, Body, HttpCode, HttpS
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
+import { AuthDtoPipe, registrationSchema, emailOtpSchema, verifyOtpSchema, profileSchema } from './auth.dto';
+import type { RegisterDto, EmailOtpDto, VerifyOtpDto } from './auth.dto';
 
 @Controller('auth')
 export class AuthController {
     constructor(private authService: AuthService) { }
 
     @HttpCode(HttpStatus.OK)
-    @UseGuards(LocalAuthGuard)
+    @UseGuards(AuthRateLimitGuard, LocalAuthGuard)
     @Post('login')
     async login(@Request() req) {
         return this.authService.login(req.user);
     }
 
     @Post('register')
-    async register(@Body() body: {
-        clinicName: string;
-        contactName: string;
-        email: string;
-        phone: string;
-        password: string;
-    }) {
+    @UseGuards(AuthRateLimitGuard)
+    async register(@Body(new AuthDtoPipe(registrationSchema)) body: RegisterDto) {
         return this.authService.initiateRegistration(body);
     }
 
     @Post('register/verify')
-    async verifyOtp(@Body() body: { email: string; otp: string }) {
+    @UseGuards(AuthRateLimitGuard)
+    async verifyOtp(@Body(new AuthDtoPipe(verifyOtpSchema)) body: VerifyOtpDto) {
         return this.authService.verifyOtp(body.email, body.otp);
+    }
+
+    @Post('register/resend')
+    @UseGuards(AuthRateLimitGuard)
+    async resendOtp(@Body(new AuthDtoPipe(emailOtpSchema)) body: EmailOtpDto) {
+        return this.authService.resendOtp(body.email);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -36,9 +41,9 @@ export class AuthController {
         return req.user;
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
     @Patch('me')
-    updateProfile(@Body() body: { name?: string; email?: string }, @Request() req) {
+    updateProfile(@Body(new AuthDtoPipe(profileSchema)) body: { name?: string; email?: string }, @Request() req) {
         return this.authService.updateProfile(req.user.id, body);
     }
 }

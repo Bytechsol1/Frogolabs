@@ -5,6 +5,8 @@ node_modules/
 .env
 .env.local
 .env.*
+!.env.example
+!.env.*.example
 
 # Build outputs
 dist/
@@ -14,6 +16,14 @@ out/
 
 # Uploads (user-generated files)
 uploads/
+
+# Local dev scratch space (npm cache / temp dir redirected off a full C: drive)
+.devtmp/
+frigo-flow.devtmpnpm-cache/
+
+# Local runtime and test artifacts
+*.log
+coverage/
 
 # Misc
 .DS_Store

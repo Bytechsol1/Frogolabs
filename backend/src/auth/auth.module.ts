@@ -8,6 +8,8 @@ import { ClinicsModule } from '../clinics/clinics.module';
 import { MailModule } from '../mail/mail.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { EmailOtpService } from './email-otp.service';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 
 @Module({
   imports: [
@@ -20,7 +22,7 @@ import { LocalStrategy } from './strategies/local.strategy';
       signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [AuthService, LocalStrategy, JwtStrategy],
+  providers: [AuthService, EmailOtpService, AuthRateLimitGuard, LocalStrategy, JwtStrategy],
   controllers: [AuthController],
   exports: [AuthService],
 })

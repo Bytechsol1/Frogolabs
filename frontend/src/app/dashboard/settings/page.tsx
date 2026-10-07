@@ -1,5 +1,13 @@
 'use client';
 
+import { EmailInput } from '@/components/ui/email-input';
+import { normalizeEmail } from '@/lib/email-validation';
+import { profileFieldErrors } from '@frigo-flow/validation';
+import { useFormValidation } from '@/lib/use-form-validation';
+import { FieldError } from '@/components/ui/field-error';
+import { prepareEmailVerification } from '@/lib/email-verification';
+import { useRouter } from 'next/navigation';
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -40,6 +48,8 @@ export default function SettingsPage() {
     const [editing, setEditing] = useState(false);
     const [name, setName] = useState(user?.name || '');
     const [email, setEmail] = useState(user?.email || '');
+    const profileValidation = useFormValidation({ name, email }, profileFieldErrors, 'settings-');
+    const router = useRouter();
     const [saving, setSaving] = useState(false);
     const [profileError, setProfileError] = useState('');
     const [profileSuccess, setProfileSuccess] = useState('');
@@ -70,16 +80,21 @@ export default function SettingsPage() {
         const q = userSearch.toLowerCase();
         return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.clinic?.name || '').toLowerCase().includes(q);
     });
+    const linkedClinicCount = new Set(filteredUsers.map(u => u.clinic_id).filter(Boolean)).size;
 
-    const totalUsers = allUsers.length;
-    const adminUsers = allUsers.filter(u => u.role === 'ADMIN').length;
-    const clinicStaff = allUsers.filter(u => u.role === 'CLINIC_USER').length;
 
     const handleSaveProfile = async () => {
-        if (!name.trim() || !email.trim()) { setProfileError('Name and email are required.'); return; }
+        if (saving) return;
+        setProfileError('');
+        if (!profileValidation.check()) return;
         setSaving(true); setProfileError('');
         try {
-            const res = await axios.patch(`${API}/auth/me`, { name: name.trim(), email: email.trim() }, { headers: authHeader });
+            const res = await axios.patch(`${API}/auth/me`, { name: name.trim(), email: normalizeEmail(email) }, { headers: authHeader });
+            if (res.data.requires_verification) {
+                prepareEmailVerification(res.data.email, true, res.data.resend_after || 60);
+                router.push('/verify-email');
+                return;
+            }
             await login(res.data.access_token);
             setProfileSuccess('Profile updated successfully.');
             setEditing(false);
@@ -124,11 +139,11 @@ export default function SettingsPage() {
             <Tabs defaultValue={isAdmin ? 'users' : 'profile'} className="w-full">
                 <TabsList className="bg-white/10 p-1 rounded-full border border-white/20 inline-flex shadow-xs">
                     {isAdmin && (
-                        <TabsTrigger value="users" className="gap-2 text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                        <TabsTrigger value="users" className="gap-2 text-xs font-bold rounded-full px-5 py-2 data-active:bg-white">
                             <Users className="w-3.5 h-3.5" /> User Management
                         </TabsTrigger>
                     )}
-                    <TabsTrigger value="profile" className="gap-2 text-xs font-bold text-slate-300 rounded-full px-5 py-2 data-[state=active]:bg-white data-[state=active]:text-[#080e1e] transition-colors">
+                    <TabsTrigger value="profile" className="gap-2 text-xs font-bold rounded-full px-5 py-2 data-active:bg-white">
                         <User className="w-3.5 h-3.5" /> My Profile
                     </TabsTrigger>
                 </TabsList>
@@ -136,18 +151,15 @@ export default function SettingsPage() {
                 {/* User Management Tab */}
                 {isAdmin && (
                     <TabsContent value="users" className="mt-6 space-y-6">
-                        <div className="grid gap-4 sm:grid-cols-3">
-                            <SummaryCard title="Total Platform Users" value={totalUsers} icon={Users} />
-                            <SummaryCard title="Frigo Admins" value={adminUsers} icon={Shield} />
-                            <SummaryCard title="Clinic Staff Users" value={clinicStaff} icon={Building2} />
-                        </div>
-
                         <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden">
                             <CardHeader className="bg-white/60 border-b border-[#e6e0ce] py-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
-                                        <Users className="w-4 h-4 text-[#cbb28d]" /> Authorized Portal Users
-                                    </CardTitle>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <CardTitle className="text-sm font-bold text-[#080e1e] flex items-center gap-2">
+                                            <Users className="w-4 h-4 text-[#cbb28d]" /> Authorized Portal Users{!loadingUsers && ` (${filteredUsers.length})`}
+                                        </CardTitle>
+                                        {!loadingUsers && <span className="text-xs font-medium text-[#8c7657]">Linked clinics: {linkedClinicCount}</span>}
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         <div className="relative">
                                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -170,6 +182,7 @@ export default function SettingsPage() {
                                 <Table>
                                     <TableHeader className="bg-[#f2ede0]/80 border-b border-[#e6e0ce]">
                                         <TableRow>
+                                            <TableHead className="w-16 font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">No.</TableHead>
                                             <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Name</TableHead>
                                             <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Email Address</TableHead>
                                             <TableHead className="font-mono text-xs tracking-wider font-bold uppercase text-[#080e1e]">Role</TableHead>
@@ -180,14 +193,15 @@ export default function SettingsPage() {
                                     <TableBody>
                                         {loadingUsers ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="h-32 text-center text-slate-500 italic text-xs">Loading users…</TableCell>
+                                                <TableCell colSpan={6} className="h-32 text-center text-slate-500 italic text-xs">Loading users…</TableCell>
                                             </TableRow>
                                         ) : filteredUsers.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="h-32 text-center text-slate-500 italic text-xs">No users found matching query.</TableCell>
+                                                <TableCell colSpan={6} className="h-32 text-center text-slate-500 italic text-xs">No users found matching query.</TableCell>
                                             </TableRow>
-                                        ) : filteredUsers.map(u => (
+                                        ) : filteredUsers.map((u, index) => (
                                             <TableRow key={u.id} className="hover:bg-[#f3eee0] transition-colors border-b border-[#e6e0ce]">
+                                                <TableCell className="font-mono text-xs font-bold text-[#8c7657]">{index + 1}</TableCell>
                                                 <TableCell className="font-bold text-xs text-[#080e1e]">{u.name}</TableCell>
                                                 <TableCell className="text-xs text-slate-600 font-medium flex items-center gap-1.5 pt-3">
                                                     <Mail className="w-3 h-3 text-[#cbb28d]" /> {u.email}
@@ -231,7 +245,7 @@ export default function SettingsPage() {
                                 </CardTitle>
                                 {!editing && (
                                     <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs font-bold text-[#080e1e] hover:bg-[#080e1e] hover:text-white rounded-full"
-                                        onClick={() => { setEditing(true); setProfileSuccess(''); setProfileError(''); setName(user?.name || ''); setEmail(user?.email || ''); }}>
+                                        onClick={() => { profileValidation.reset(); setEditing(true); setProfileSuccess(''); setProfileError(''); setName(user?.name || ''); setEmail(user?.email || ''); }}>
                                         <Pencil className="w-3.5 h-3.5 text-[#cbb28d]" /> Edit
                                     </Button>
                                 )}
@@ -253,10 +267,11 @@ export default function SettingsPage() {
                                 {editing ? (
                                     <div className="space-y-4">
                                         <FormField label="Full Name">
-                                            <Input className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" />
+                                            <Input id="settings-name" {...profileValidation.propsFor('name')} className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" />
+                                            <FieldError id="settings-name" message={profileValidation.errorFor('name')} />
                                         </FormField>
                                         <FormField label="Email Address">
-                                            <Input className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
+                                            <EmailInput id="settings-email" required error={profileValidation.errorFor('email')} className="h-10 bg-white border-[#ded8c4] text-xs font-medium rounded-xl"  value={email} onChange={e => setEmail(e.target.value)} placeholder="your@gmail.com" />
                                         </FormField>
                                         {profileError && <p className="text-xs font-bold text-rose-700">{profileError}</p>}
                                         <div className="flex gap-2 pt-1">
@@ -334,24 +349,6 @@ export default function SettingsPage() {
                 </TabsContent>
             </Tabs>
         </div>
-    );
-}
-
-function SummaryCard({ title, value, icon: Icon }: any) {
-    return (
-        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
-                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
-                        <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
-                </div>
-            </div>
-            <div>
-                <p className="text-3xl font-extrabold text-slate-900">{value}</p>
-            </div>
-        </Card>
     );
 }
 

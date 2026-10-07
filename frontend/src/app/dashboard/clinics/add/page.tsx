@@ -1,5 +1,8 @@
 'use client';
 
+import { EmailInput } from '@/components/ui/email-input';
+import { useEmailValidation } from '@/lib/use-email-validation';
+
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +13,8 @@ import { useRouter } from "next/navigation";
 
 export default function AddClinicPage() {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
+    const [email, setEmail] = useState('');
+    const emailValidation = useEmailValidation(email, false);
 
     return (
         <div className="space-y-6 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -51,12 +55,12 @@ export default function AddClinicPage() {
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="email">Admin Email</Label>
-                            <Input id="email" type="email" placeholder="admin@clinic.com" className="rounded-xl" />
+                            <EmailInput value={email} onChange={event => setEmail(event.target.value)} error={emailValidation.error} id="email"  placeholder="admin@gmail.com" className="rounded-xl" />
                         </div>
                     </div>
 
                     <div className="pt-6 flex justify-end">
-                        <Button className="bg-primary px-8 rounded-xl font-bold py-6 text-lg shadow-lg shadow-primary/20">
+                        <Button onClick={() => emailValidation.check()} className="bg-primary px-8 rounded-xl font-bold py-6 text-lg shadow-lg shadow-primary/20">
                             <Save className="w-5 h-5 mr-2" /> Initialize Clinic
                         </Button>
                     </div>

@@ -1,47 +1,45 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { registeredPatientWhere, displayedTerraEnvironment, displayedWorkflowWhere, displayedResultWhere } from '../dashboard/live-data';
 import { Patient } from '@prisma/client';
 import { ValidicService } from '../validic/validic.service';
+import { TerraService } from '../terra/terra.service';
+import { SANDBOX_REPORT_DELAY_MS } from '../terra/sandbox-config';
+import { patientCreateSchema, patientUpdateSchema, parseRecord } from '../common/email-records.dto';
+import { patientDirectoryQuery } from './patient-directory-query';
 
 @Injectable()
 export class PatientsService {
     constructor(
         private prisma: PrismaService,
         private validicService: ValidicService,
+        private terraService: TerraService,
     ) { }
 
     async findAll(clinic_id: string | null): Promise<any[]> {
-        return this.prisma.patient.findMany({
-            where: clinic_id ? { clinic_id } : undefined,
-            include: {
-                clinic: { select: { name: true } },
-                workflows: {
-                    orderBy: { created_at: 'desc' },
-                    take: 1,
-                    select: { id: true, test_type: true, status: true, created_at: true },
-                },
-            },
-            orderBy: { created_at: 'desc' },
-        });
+        return this.prisma.patient.findMany(patientDirectoryQuery(clinic_id));
     }
 
     async findOne(id: string, clinic_id: string | null): Promise<any> {
         const patient = await this.prisma.patient.findFirst({
-            where: { id, ...(clinic_id ? { clinic_id } : {}) },
+            where: { id, ...registeredPatientWhere, ...(clinic_id ? { clinic_id } : {}) },
             include: {
                 clinic: true,
                 workflows: {
+                    where: { ...displayedWorkflowWhere(), ...(clinic_id ? { clinic_id } : {}) },
                     include: {
                         history: {
                             orderBy: { created_at: 'desc' },
                             include: { user: { select: { name: true } } },
                         },
-                        results: true,
+                        results: { where: displayedResultWhere() },
                         notifications: true,
                     },
                     orderBy: { created_at: 'desc' },
                 },
-                results: true,
+                results: { where: displayedResultWhere() },
+                terraOrders: { where: { environment: displayedTerraEnvironment() }, orderBy: { created_at: 'desc' } },
+                sandboxReportJobs: displayedTerraEnvironment() === 'SANDBOX' ? { orderBy: { created_at: 'desc' }, select: { id: true, status: true, test_name: true, due_at: true, last_error: true } } : false,
                 metrics: {
                     orderBy: { recorded_at: 'desc' },
                     take: 50,
@@ -52,22 +50,29 @@ export class PatientsService {
         return patient;
     }
 
-    async create(clinic_id: string, user_id: string, data: any): Promise<any> {
-        const { test_type, dob, ...patientData } = data;
+    async create(clinic_id: string, user_id: string, input: unknown): Promise<any> {
+        const { test_type, terra_variant_id, dob, date_of_birth, age, ...patientData } = parseRecord(patientCreateSchema, input);
+        const sandboxTest = await this.terraService.prepareSandboxTest(terra_variant_id);
+        const initialStatus = sandboxTest || test_type ? 'TEST_PACKAGE_SELECTED' : 'PATIENT_CREATED';
         const patient = await this.prisma.patient.create({
             data: {
                 ...patientData,
-                dob: dob ? new Date(dob) : null,
+                dob: dob || date_of_birth || null,
+                age: age ?? null,
                 clinic: { connect: { id: clinic_id } },
+                ...(sandboxTest ? { sandboxReportJobs: { create: {
+                    variant_id: sandboxTest.id, test_name: sandboxTest.name, country_code: sandboxTest.country,
+                    due_at: new Date(Date.now() + SANDBOX_REPORT_DELAY_MS),
+                } } } : {}),
                 workflows: {
                     create: {
                         clinic_id,
-                        test_type: test_type || 'Unspecified',
-                        status: 'TEST_PACKAGE_SELECTED' as any,
+                        test_type: sandboxTest?.name || test_type || 'Unspecified',
+                        status: initialStatus,
                         history: {
                             create: {
-                                status: 'TEST_PACKAGE_SELECTED' as any,
-                                notes: 'Patient enrolled and test package selected',
+                                status: initialStatus,
+                                notes: test_type || sandboxTest ? 'Patient enrolled and test package selected' : 'Patient enrolled',
                                 updated_by: user_id,
                             },
                         },
@@ -87,7 +92,8 @@ export class PatientsService {
         return patient;
     }
 
-    async update(id: string, clinic_id: string | null, data: any): Promise<Patient> {
+    async update(id: string, clinic_id: string | null, input: unknown): Promise<Patient> {
+        const data = parseRecord(patientUpdateSchema, input);
         await this.findOne(id, clinic_id);
         return this.prisma.patient.update({ where: { id }, data });
     }

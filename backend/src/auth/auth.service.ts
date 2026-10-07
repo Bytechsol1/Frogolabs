@@ -1,34 +1,42 @@
-import { Injectable, ConflictException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { ClinicsService } from '../clinics/clinics.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
+import { EmailOtpService } from './email-otp.service';
+import { AuthDtoPipe, RegisterDto, registrationSchema, profileSchema } from './auth.dto';
 import * as bcrypt from 'bcrypt';
+import { requireEmail, requireLoginEmail } from '../common/email-validation';
 
 @Injectable()
 export class AuthService {
     constructor(
         private usersService: UsersService,
-        private clinicsService: ClinicsService,
         private jwtService: JwtService,
         private prisma: PrismaService,
-        private mailService: MailService,
+        private emailOtp: EmailOtpService,
     ) { }
 
     async validateUser(email: string, pass: string): Promise<any> {
-        const user = await this.usersService.findOne(email);
+        email = requireLoginEmail(email);
+        if (typeof email !== 'string' || typeof pass !== 'string' || Buffer.byteLength(pass, 'utf8') > 72) return null;
+        const user = await this.usersService.findOne(email.trim().toLowerCase());
         if (!user || !(await bcrypt.compare(pass, user.password_hash))) {
             return null;
         }
         if (user.clinic?.status === 'Inactive') {
             throw new UnauthorizedException('Your clinic account has been disabled. Please contact Frigo Labs.');
         }
+        this.requireVerified(user);
         const { password_hash, clinic, ...result } = user;
         return result;
     }
 
+    private requireVerified(user: { email_verified: boolean }) {
+        if (!user.email_verified) throw new ForbiddenException({ code: 'EMAIL_NOT_VERIFIED', message: 'Your email has not been verified.' });
+    }
+
     async login(user: any) {
+        this.requireVerified(user);
         const payload = { email: user.email, sub: user.id, role: user.role, clinic_id: user.clinic_id ?? null, name: user.name };
         return {
             access_token: this.jwtService.sign(payload),
@@ -36,94 +44,28 @@ export class AuthService {
         };
     }
 
-    async initiateRegistration(data: {
-        clinicName: string;
-        contactName: string;
-        email: string;
-        phone: string;
-        password: string;
-    }) {
-        const existing = await this.usersService.findOne(data.email);
-        if (existing) {
-            throw new ConflictException('An account with this email already exists');
-        }
-
-        const passwordHash = await bcrypt.hash(data.password, 10);
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-        const pendingObj = JSON.stringify({
-            clinicName: data.clinicName,
-            contactName: data.contactName,
-            phone: data.phone,
-            passwordHash,
-        });
-
-        await this.prisma.otpVerification.upsert({
-            where: { email: data.email },
-            create: {
-                email: data.email,
-                otp,
-                expires_at: expiresAt,
-                pending_data: pendingObj,
-            },
-            update: {
-                otp,
-                expires_at: expiresAt,
-                pending_data: pendingObj,
-            },
-        });
-
-        await this.mailService.sendOtp(data.email, otp, data.contactName);
-
-        const isDev = process.env.NODE_ENV !== 'production';
-        return {
-            message: 'Verification code sent to your email address.',
-            ...(isDev && { dev_otp: otp }),
-        };
+    async initiateRegistration(data: RegisterDto) {
+        return this.emailOtp.register(new AuthDtoPipe(registrationSchema).transform(data) as RegisterDto);
     }
 
     async verifyOtp(email: string, otp: string) {
-        const record = await this.prisma.otpVerification.findUnique({ where: { email } });
+        const user = await this.emailOtp.verify(email, otp);
+        return { ...await this.login(user), message: 'Email verified successfully.' };
+    }
 
-        if (!record) {
-            throw new BadRequestException('No pending registration found. Please sign up again.');
-        }
-        if (new Date() > record.expires_at) {
-            await this.prisma.otpVerification.delete({ where: { email } });
-            throw new BadRequestException('Verification code has expired. Please sign up again.');
-        }
-        if (record.otp !== otp) {
-            throw new BadRequestException('Incorrect verification code. Please try again.');
-        }
-
-        const pendingData = typeof record.pending_data === 'string' ? JSON.parse(record.pending_data) : (record.pending_data as any);
-
-        const clinic = await this.clinicsService.create({
-            name: pendingData.clinicName,
-            contact_name: pendingData.contactName,
-            email,
-            phone: pendingData.phone,
-            status: 'Active',
-        });
-
-        const user = await this.usersService.create({
-            name: pendingData.contactName,
-            email,
-            password_hash: pendingData.passwordHash,
-            role: 'CLINIC_USER',
-            clinic: { connect: { id: clinic.id } },
-        });
-
-        await this.prisma.otpVerification.delete({ where: { email } });
-
-        const payload = { email: user.email, sub: user.id, role: user.role, clinic_id: clinic.id, name: user.name };
-        return { access_token: this.jwtService.sign(payload) };
+    async resendOtp(email: string) {
+        return this.emailOtp.resend(email);
     }
 
     async updateProfile(userId: string, data: { name?: string; email?: string }) {
-        const updated = await this.usersService.update(userId, data);
-        const payload = { email: updated.email, sub: updated.id, role: updated.role, clinic_id: updated.clinic_id ?? null, name: updated.name };
-        return { access_token: this.jwtService.sign(payload) };
+        data = profileSchema.parse(new AuthDtoPipe(profileSchema).transform(data));
+        if (data.email !== undefined) data = { ...data, email: requireEmail(data.email) };
+        const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+        if (data.email && data.email.toLowerCase() !== user.email.toLowerCase()) {
+            if (data.name) await this.usersService.update(userId, { name: data.name });
+            return this.emailOtp.changeEmail(userId, data.email);
+        }
+        const updated = await this.usersService.update(userId, { ...(data.name ? { name: data.name } : {}) });
+        return this.login(updated);
     }
 }

@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    const fetchProfile = async (token: string) => {
+    const fetchProfile = async (token: string, propagateError = false) => {
         try {
             const res = await axios.get('/api/v1/auth/me', {
                 headers: { Authorization: `Bearer ${token}` }
@@ -35,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('Session expired or invalid token.');
             localStorage.removeItem('access_token');
             setUser(null);
+            if (propagateError) throw err;
         } finally {
             setIsLoading(false);
         }
@@ -42,7 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = async (token: string) => {
         localStorage.setItem('access_token', token);
-        await fetchProfile(token);
+        await fetchProfile(token, true);
     };
 
     const logout = () => {

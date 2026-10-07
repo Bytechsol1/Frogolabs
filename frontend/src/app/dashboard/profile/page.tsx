@@ -1,41 +1,54 @@
 ﻿'use client';
 
+import { EmailInput } from '@/components/ui/email-input';
+import { normalizeEmail } from '@/lib/email-validation';
+import { profileFieldErrors } from '@frigo-flow/validation';
+import { useFormValidation } from '@/lib/use-form-validation';
+import { FieldError } from '@/components/ui/field-error';
+
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Shield, Pencil, Check, X } from "lucide-react";
+import { User, Mail, Shield, Pencil, Check, X, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import axios from 'axios';
+import { useRouter } from 'next/navigation';
+import { prepareEmailVerification } from '@/lib/email-verification';
 
 export default function ProfilePage() {
     const { user, login } = useAuth();
+    const router = useRouter();
     const [editing, setEditing] = useState(false);
     const [name, setName] = useState(user?.name || '');
     const [email, setEmail] = useState(user?.email || '');
+    const validation = useFormValidation({ name, email }, profileFieldErrors, 'profile-');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
     const handleSave = async () => {
-        if (!name.trim() || !email.trim()) {
-            setError('Name and email are required.');
-            return;
-        }
+        if (saving) return;
         setError('');
+        if (!validation.check()) return;
         setSaving(true);
         try {
             const res = await axios.patch(
                 '/api/v1/auth/me',
-                { name: name.trim(), email: email.trim() },
+                { name: name.trim(), email: normalizeEmail(email) },
                 { headers: { Authorization: `Bearer ${user?.token}` } }
             );
+            if (res.data.requires_verification) {
+                prepareEmailVerification(res.data.email, true, res.data.resend_after || 60);
+                router.push('/verify-email');
+                return;
+            }
             await login(res.data.access_token);
             setSuccess('Profile updated successfully.');
             setEditing(false);
-        } catch (err: any) {
-            setError(err?.response?.data?.message || 'Failed to update profile. Please try again.');
+        } catch (err: unknown) {
+            const message = axios.isAxiosError<{ message?: string }>(err) ? err.response?.data?.message : '';
+            setError(message || 'Failed to update profile. Please try again.');
         } finally {
             setSaving(false);
         }
@@ -48,99 +61,116 @@ export default function ProfilePage() {
         setEditing(false);
     };
 
-    return (
-        <div className="space-y-6 max-w-2xl">
-            <h2 className="text-3xl font-bold tracking-tight text-primary">User Profile</h2>
+    const roleLabel = user?.role === 'ADMIN' ? 'Frigo Admin' : 'Clinic Staff';
+    const initials = (user?.name || 'User').trim().split(/\s+/).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase();
+    const startEditing = () => {
+        validation.reset();
+        setName(user?.name || '');
+        setEmail(user?.email || '');
+        setEditing(true);
+        setSuccess('');
+        setError('');
+    };
+    const inputClass = 'h-12 rounded-xl border-[#e4dec3] bg-white px-4 text-sm text-[#080e1e] focus-visible:border-[#8c7657] focus-visible:ring-2 focus-visible:ring-[#cbb28d]/40 focus-visible:ring-inset';
 
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Account Information</CardTitle>
-                    {!editing && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => { setEditing(true); setSuccess(''); setError(''); }}
-                        >
-                            <Pencil className="w-4 h-4" /> Edit Profile
-                        </Button>
-                    )}
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Avatar row */}
-                    <div className="flex items-center gap-4 p-4 bg-muted rounded-xl">
-                        <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-xl font-bold text-primary">
-                            {(editing ? name : user?.name)?.[0]?.toUpperCase() || 'U'}
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold">{user?.name || 'Guest User'}</h3>
-                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                <Mail className="w-3 h-3" /> {user?.email}
-                            </p>
+    return (
+        <div className="space-y-7 pb-8 text-[#080e1e]">
+            <header>
+                <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Account Settings</h1>
+            </header>
+
+            <div className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]">
+                <aside aria-label="Profile summary" className="flex min-w-0 flex-col overflow-hidden rounded-[28px] border border-[#e4dec3] bg-white shadow-[0_4px_25px_rgba(8,14,30,0.03)]">
+                    <div className="relative h-36 shrink-0 overflow-hidden bg-[#080e1e] px-7 pt-7">
+                        <svg aria-hidden="true" viewBox="0 0 400 160" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full fill-none">
+                            <path d="M150 180C175 50 350 150 430 -20" stroke="#cbb28d" strokeWidth="28" opacity="0.13" />
+                            <path d="M130 180C155 50 330 150 410 -20" stroke="#cbb28d" strokeWidth="1" opacity="0.5" />
+                            <path d="M200 185C225 90 360 190 450 30" stroke="#cbb28d" strokeWidth="1" opacity="0.25" />
+                        </svg>
+                        <div className="relative flex items-center justify-between gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#dfc59e]">My Profile</span>
+                            <span className="text-[10px] font-medium tracking-[0.14em] text-white/70">FRIGO <span className="text-[#dfc59e]">FLOW</span></span>
                         </div>
                     </div>
+                    <div className="relative -mt-12 mx-auto flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-[6px] border-white bg-[#f2ede2] shadow-sm">
+                        <span className="flex h-full w-full items-center justify-center rounded-full border border-[#cbb28d]/60 text-3xl font-semibold text-[#8c7657]">{initials}</span>
+                    </div>
+                    <div className="px-6 pb-7 pt-5 text-center sm:px-7">
+                        <h2 className="break-words text-2xl font-bold tracking-tight text-[#080e1e]">{user?.name || 'Your profile'}</h2>
+                        <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#f2ede2] px-3 py-1.5 text-xs font-semibold text-[#8c7657]">
+                            <Shield className="h-3.5 w-3.5" aria-hidden="true" /> {roleLabel}
+                        </span>
+                        <div className="mt-7 border-t border-[#e6e0ce] pt-5">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8c7657]">Email Address</p>
+                            <p className="mt-2 break-all text-sm leading-relaxed text-slate-600">{user?.email}</p>
+                        </div>
+                    </div>
+                    <div className="mt-auto flex items-center gap-3 border-t border-[#e6e0ce] bg-[#faf9f6] px-6 py-5 sm:px-7">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e4dec3] bg-white text-[#8c7657]">
+                            {user?.email_verified ? <Check className="h-4 w-4" aria-hidden="true" /> : <Mail className="h-4 w-4" aria-hidden="true" />}
+                        </span>
+                        <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[#080e1e]">{user?.email_verified ? 'Email verified' : 'Email not verified'}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">{user?.email_verified ? 'Your contact address is confirmed.' : 'Confirm your account email address.'}</p>
+                        </div>
+                    </div>
+                </aside>
 
-                    {editing ? (
-                        <div className="space-y-4 pt-2">
-                            <div className="space-y-2">
-                                <Label htmlFor="profile-name">Full Name</Label>
-                                <Input
-                                    id="profile-name"
-                                    value={name}
-                                    onChange={e => setName(e.target.value)}
-                                    placeholder="Your full name"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="profile-email">Email Address</Label>
-                                <Input
-                                    id="profile-email"
-                                    type="email"
-                                    value={email}
-                                    onChange={e => setEmail(e.target.value)}
-                                    placeholder="your@email.com"
-                                />
-                            </div>
-                            {error && (
-                                <p className="text-sm text-destructive">{error}</p>
-                            )}
-                            <div className="flex gap-3 pt-2">
-                                <Button onClick={handleSave} disabled={saving} className="gap-2">
-                                    <Check className="w-4 h-4" />
-                                    {saving ? 'Saving...' : 'Save Changes'}
-                                </Button>
-                                <Button variant="outline" onClick={handleCancel} disabled={saving} className="gap-2">
-                                    <X className="w-4 h-4" /> Cancel
-                                </Button>
-                            </div>
+                <section aria-labelledby="personal-details" className="min-w-0 overflow-hidden rounded-[28px] border border-[#e4dec3] bg-white shadow-[0_4px_25px_rgba(8,14,30,0.03)]">
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e6e0ce] p-6 sm:px-8">
+                        <div>
+                            <h2 id="personal-details" className="text-lg font-bold">Personal Details</h2>
                         </div>
-                    ) : (
-                        <div className="grid gap-2 text-sm pt-2 border-t">
-                            {success && (
-                                <p className="text-sm text-emerald-600 font-medium pb-1">{success}</p>
-                            )}
-                            <div className="flex justify-between py-1">
-                                <span className="text-muted-foreground">Full Name:</span>
-                                <span className="font-medium">{user?.name}</span>
+                        {!editing && <Button onClick={startEditing} className="h-10 gap-2 rounded-full bg-[#080e1e] px-5 text-xs font-bold text-white hover:bg-[#080e1e]">
+                            <Pencil className="h-3.5 w-3.5 text-[#cbb28d]" /> Edit Profile
+                        </Button>}
+                    </div>
+
+                    <div className="p-6 sm:p-8">
+                        {success && <p role="status" className="mb-6 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><Check className="h-4 w-4 shrink-0" />{success}</p>}
+                        {editing ? <form noValidate onSubmit={e => { e.preventDefault(); void handleSave(); }} className="space-y-6">
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="profile-name" className="text-xs font-semibold text-slate-600">Full Name</Label>
+                                    <Input id="profile-name" {...validation.propsFor('name')} autoComplete="name" required maxLength={120} disabled={saving} value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" className={inputClass} />
+                                    <FieldError id="profile-name" message={validation.errorFor('name')} />
+                                </div>
+                                <div className="space-y-2.5">
+                                    <Label htmlFor="profile-email" className="text-xs font-semibold text-slate-600">Email Address</Label>
+                                    <EmailInput error={validation.errorFor('email')} id="profile-email" autoComplete="email"  required disabled={saving} value={email} onChange={e => setEmail(e.target.value)} placeholder="your@gmail.com" className={inputClass} aria-describedby="email-note" />
+                                </div>
                             </div>
-                            <div className="flex justify-between py-1">
-                                <span className="text-muted-foreground">Email:</span>
-                                <span className="font-medium">{user?.email}</span>
+                            {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+                            <div className="flex flex-wrap items-center gap-3">
+                                <Button type="submit" disabled={saving} className="h-10 gap-2 rounded-full bg-[#080e1e] px-5 text-xs font-bold text-white hover:bg-[#080e1e]">
+                                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-[#cbb28d]" />}{saving ? 'Saving...' : 'Save Changes'}
+                                </Button>
+                                <Button type="button" variant="outline" onClick={handleCancel} disabled={saving} className="h-10 gap-2 rounded-full border-[#e4dec3] px-5 text-xs hover:bg-white"><X className="h-4 w-4" /> Cancel</Button>
                             </div>
-                            <div className="flex justify-between py-1">
-                                <span className="text-muted-foreground">Assigned Role:</span>
-                                <span className="font-bold flex items-center gap-1 text-primary">
-                                    <Shield className="w-3 h-3" /> {user?.role}
-                                </span>
+                        </form> : <dl className="grid gap-5 sm:grid-cols-2">
+                            <div className="min-w-0 rounded-2xl border border-[#ebe5d8] bg-[#faf9f6] p-5">
+                                <dt className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[#8c7657]"><User className="h-3.5 w-3.5" aria-hidden="true" /> Full Name</dt>
+                                <dd className="mt-3 break-words text-base font-semibold">{user?.name || 'Not provided'}</dd>
                             </div>
-                            <div className="flex justify-between py-1">
-                                <span className="text-muted-foreground">Member Since:</span>
-                                <span className="font-medium">June 2026</span>
+                            <div className="min-w-0 rounded-2xl border border-[#ebe5d8] bg-[#faf9f6] p-5">
+                                <dt className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[#8c7657]"><Mail className="h-3.5 w-3.5" aria-hidden="true" /> Email Address</dt>
+                                <dd className="mt-3 break-all text-sm font-semibold leading-6">{user?.email || 'Not provided'}</dd>
                             </div>
+                        </dl>}
+
+                        <div className="mt-8 border-t border-[#e6e0ce] pt-6">
+                            <h3 className="text-sm font-bold">Account Access</h3>
+                            <dl className="mt-5 grid gap-5 sm:grid-cols-2">
+                                <div><dt className="text-xs text-slate-500">Assigned role</dt><dd className="mt-2 flex items-center gap-2 text-sm font-semibold"><Shield className="h-4 w-4 text-[#b79b70]" aria-hidden="true" />{roleLabel}</dd></div>
+                                <div><dt className="text-xs text-slate-500">Email status</dt><dd className={`mt-2 inline-flex items-center gap-2 text-sm font-semibold ${user?.email_verified ? 'text-emerald-800' : 'text-amber-800'}`}><span className={`h-1.5 w-1.5 rounded-full ${user?.email_verified ? 'bg-emerald-600' : 'bg-amber-600'}`} />{user?.email_verified ? 'Verified' : 'Not verified'}</dd></div>
+                            </dl>
                         </div>
-                    )}
-                </CardContent>
-            </Card>
+                    </div>
+                    <div id="email-note" className="flex items-start gap-3 border-t border-[#e6e0ce] bg-[#faf9f6] px-6 py-4 sm:px-8">
+                        <p className="text-xs leading-relaxed text-slate-500">Changing your email? We’ll send a verification code to your new address to confirm it.</p>
+                    </div>
+                </section>
+            </div>
         </div>
     );
 }

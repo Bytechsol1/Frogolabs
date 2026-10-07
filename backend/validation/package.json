@@ -1,0 +1,9 @@
+{
+  "name": "@frigo-flow/validation",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": { "test": "node --test email.test.js phone.test.js forms.test.js" },
+  "dependencies": { "zod": "^4.4.3", "libphonenumber-js": "^1.13.14" }
+}

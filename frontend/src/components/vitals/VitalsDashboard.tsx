@@ -80,12 +80,13 @@ export const VitalsDashboard: React.FC<VitalsDashboardProps> = ({
                 case 'steps': return '8,450';
                 case 'sleep': return '7.8';
                 case 'hrv': return '58';
-                case 'spo2': return '98%';
+                case 'spo2': return '98';
                 case 'temperature': return '36.6';
                 default: return '--';
             }
         }
         if (type === 'blood_pressure') return formatBP(item);
+        if (type === 'spo2') return String(item.numeric_value ?? item.value ?? '--').replace(/\s*%\s*$/, '').trim();
         if (type === 'sleep') {
             try {
                 const obj = typeof item.value === 'string' && item.value.startsWith('{') ? JSON.parse(item.value) : null;
@@ -174,36 +175,35 @@ export const VitalsDashboard: React.FC<VitalsDashboardProps> = ({
                     const isSelected = selectedMetric === cfg.type;
 
                     return (
-                        <div
+                        <button
                             key={cfg.type}
+                            type="button"
+                            aria-label={cfg.title}
+                            aria-pressed={isSelected}
                             onClick={() => setSelectedMetric(cfg.type)}
-                            className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${
-                                isSelected
-                                    ? 'border-[#cbb28d]/40 shadow-lg bg-[#080e1e] ring-1 ring-[#cbb28d]/30'
-                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 shadow-sm'
-                            }`}
+                            className="group/vital w-full cursor-pointer p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left shadow-sm transition-[transform,box-shadow,border-color,background-color] duration-200 motion-safe:hover:-translate-y-1 hover:bg-[#080e1e] dark:hover:bg-[#080e1e] hover:shadow-lg hover:border-[#cbb28d] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c7657] motion-reduce:transition-none"
                         >
                             <div className="flex items-start justify-between">
                                 <div className={`p-2.5 rounded-xl border ${cfg.color}`}>
                                     <Icon className="w-5 h-5" />
                                 </div>
-                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${isSelected ? 'text-[#cbb28d] bg-[#cbb28d]/10' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/vital:text-[#cbb28d] group-hover/vital:bg-[#cbb28d]/10 dark:group-hover/vital:text-[#cbb28d] dark:group-hover/vital:bg-[#cbb28d]/10">
                                     {latestItem?.source || 'Device Connected'}
                                 </span>
                             </div>
 
                             <div className="mt-3">
-                                <p className={`text-xs font-medium ${isSelected ? 'text-[#cbb28d]/80' : 'text-slate-500 dark:text-slate-400'}`}>
+                                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 group-hover/vital:text-[#cbb28d]/80 dark:group-hover/vital:text-[#cbb28d]/80">
                                     {cfg.title}
                                 </p>
                                 <div className="flex items-baseline gap-1.5 mt-1">
-                                    <span className={`text-2xl font-bold tracking-tight ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                                    <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white group-hover/vital:text-white">
                                         {formatValue(cfg.type)}
                                     </span>
-                                    <span className={`text-xs font-medium ${isSelected ? 'text-[#cbb28d]' : 'text-slate-400'}`}>{cfg.unit}</span>
+                                    <span className="text-xs font-medium text-slate-400 group-hover/vital:text-[#cbb28d]">{cfg.unit}</span>
                                 </div>
                             </div>
-                        </div>
+                        </button>
                     );
                 })}
             </div>

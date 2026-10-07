@@ -6,6 +6,8 @@
     "frontend"
   ],
   "scripts": {
+    "backend": "npm run start:dev --workspace=backend",
+    "dev": "node scripts/dev.cjs",
     "dev:backend": "npm run start:dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend",
     "db:setup": "npm run db:push --workspace=backend && npm run prisma:generate --workspace=backend",

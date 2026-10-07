@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -43,17 +44,41 @@ export default function ClinicDetailPage() {
 
     const [clinic, setClinic] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All');
 
     useEffect(() => {
         if (!user?.token || !id) return;
-        axios.get(`/api/v1/clinics/${id}`, {
-            headers: { Authorization: `Bearer ${user.token}` },
-        })
-            .then(res => setClinic(res.data))
-            .catch(() => {})
-            .finally(() => setLoading(false));
+        const controller = new AbortController();
+        let fetching = false;
+        setLoading(true);
+        setClinic(null);
+        const refresh = async () => {
+            if (fetching) return;
+            fetching = true;
+            try {
+                const { data } = await axios.get(`/api/v1/clinics/${id}`, {
+                    headers: { Authorization: `Bearer ${user.token}` }, signal: controller.signal,
+                });
+                if (!controller.signal.aborted) { setClinic(data); setError(''); }
+            } catch {
+                if (!controller.signal.aborted) setError('Clinic data could not be refreshed. Please try again.');
+            } finally {
+                fetching = false;
+                if (!controller.signal.aborted) setLoading(false);
+            }
+        };
+        const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+        void refresh();
+        const timer = window.setInterval(refresh, 30_000);
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            controller.abort();
+            window.clearInterval(timer);
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
     }, [user?.token, id]);
 
     const patients: any[] = clinic?.patients || [];
@@ -62,9 +87,7 @@ export default function ClinicDetailPage() {
         const name = `${p.first_name} ${p.last_name}`.toLowerCase();
         const matchesSearch = !searchQuery || name.includes(searchQuery.toLowerCase()) ||
             (p.email || '').toLowerCase().includes(searchQuery.toLowerCase());
-        const wfStatus = p.workflows?.[0]?.status || '';
-        const matchesStatus = statusFilter === 'All' || wfStatus === statusFilter;
-        return matchesSearch && matchesStatus;
+        return matchesSearch;
     });
 
     const formatDate = (d: string) =>
@@ -82,7 +105,7 @@ export default function ClinicDetailPage() {
         return (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
                 <Building2 className="w-12 h-12 text-muted-foreground opacity-30" />
-                <p className="font-bold text-lg">Clinic not found.</p>
+                <p className="font-bold text-lg">{error || 'Clinic not found.'}</p>
                 <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
             </div>
         );
@@ -128,10 +151,11 @@ export default function ClinicDetailPage() {
             </div>
 
             {/* Stats */}
+            {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
             <div className="grid gap-4 sm:grid-cols-3">
-                <StatCard title="Total Patients" value={clinic._count?.patients ?? 0} icon={Users} color="text-primary" />
-                <StatCard title="Active Workflows" value={(clinic._count?.workflows ?? 0)} icon={Activity} color="text-emerald-500" />
-                <StatCard title="Results Ready" value={patients.filter(p => p.workflows?.[0]?.status === 'RESULTS_READY').length} icon={FlaskConical} color="text-amber-500" />
+                <StatCard title="Total Patients" value={clinic.kpi?.totalPatients ?? '--'} icon={Users} href={`/dashboard/patients?clinic_id=${encodeURIComponent(id)}`} />
+                <StatCard title="Active Sessions" value={clinic.kpi?.activeTesting ?? '--'} icon={Activity} href={`/dashboard/workflows?tab=active&clinic_id=${encodeURIComponent(id)}`} />
+                <StatCard title="Results Ready" value={clinic.kpi?.resultsReady ?? '--'} icon={FlaskConical} href={`/dashboard/lab-results?tab=available&clinic_id=${encodeURIComponent(id)}`} />
             </div>
 
             {/* Patient Table */}
@@ -151,18 +175,8 @@ export default function ClinicDetailPage() {
                                     onChange={e => setSearchQuery(e.target.value)}
                                 />
                             </div>
-                            <select
-                                className="bg-background border rounded-md px-3 py-1.5 text-xs outline-none focus:ring-2 ring-primary/20"
-                                value={statusFilter}
-                                onChange={e => setStatusFilter(e.target.value)}
-                            >
-                                <option value="All">All Statuses</option>
-                                {Object.entries(STATUS_LABEL).map(([key, label]) => (
-                                    <option key={key} value={key}>{label}</option>
-                                ))}
-                            </select>
                             <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground"
-                                onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}>
+                                onClick={() => setSearchQuery('')}>
                                 <RotateCcw className="w-3 h-3" /> Reset
                             </Button>
                         </div>
@@ -176,7 +190,7 @@ export default function ClinicDetailPage() {
                                 <TableHead className="font-bold text-xs uppercase tracking-wider">Contact</TableHead>
                                 <TableHead className="font-bold text-xs uppercase tracking-wider">Date of Birth</TableHead>
                                 <TableHead className="font-bold text-xs uppercase tracking-wider">Test Type</TableHead>
-                                <TableHead className="font-bold text-xs uppercase tracking-wider">Workflow Status</TableHead>
+                                <TableHead className="font-bold text-xs uppercase tracking-wider">Session Status</TableHead>
                                 <TableHead className="font-bold text-xs uppercase tracking-wider">Enrolled</TableHead>
                                 <TableHead className="font-bold text-xs uppercase tracking-wider text-right">Actions</TableHead>
                             </TableRow>
@@ -231,7 +245,7 @@ export default function ClinicDetailPage() {
                                                     {STATUS_LABEL[wf.status] || wf.status}
                                                 </Badge>
                                             ) : (
-                                                <span className="text-xs text-muted-foreground">No workflow</span>
+                                                <span className="text-xs text-muted-foreground">No session</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-xs text-muted-foreground">{formatDate(p.created_at)}</TableCell>
@@ -256,15 +270,15 @@ export default function ClinicDetailPage() {
     );
 }
 
-function StatCard({ title, value, icon: Icon }: any) {
-    return (
-        <Card className="border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-4 space-y-2 text-left">
+function StatCard({ title, value, icon: Icon, href }: any) {
+    const card = (
+        <Card className="h-full border border-[#e4dec3]/70 bg-white shadow-sm rounded-3xl overflow-hidden p-5 sm:p-6 gap-6 text-left group-hover:border-[#cbb28d] group-hover:bg-[#faf8f3] transition-colors">
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
-                    <div className="p-3 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
+                <div className="flex min-w-0 items-center gap-3 text-xs font-bold text-slate-500">
+                    <div className="p-3 shrink-0 rounded-2xl bg-[#080e1e] text-[#cbb28d] shadow-md">
                         <Icon className="w-5 h-5" />
                     </div>
-                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] whitespace-nowrap">{title}</span>
+                    <span className="uppercase text-xs font-bold tracking-wider text-[#080e1e] min-w-0 break-words">{title}</span>
                 </div>
             </div>
             <div>
@@ -272,4 +286,5 @@ function StatCard({ title, value, icon: Icon }: any) {
             </div>
         </Card>
     );
+    return href ? <Link href={href} aria-label={title} className="group block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8c7657] focus-visible:ring-offset-2">{card}</Link> : card;
 }
