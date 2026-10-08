@@ -430,6 +430,14 @@ export class TerraService {
             // debugging. Never log credentials — only the response body,
             // which is Terra's own error metadata (never TERRA_API_KEY/DEV_ID).
             this.logger.warn(`Terra order creation failed (HTTP ${attempt.status}).`);
+            if (attempt.status === 403 && attempt.body?.code === 'entitlement_required') {
+                throw new ServiceUnavailableException({
+                    code: 'TERRA_VANTAGE_ACCESS_REQUIRED',
+                    message: `Lab ordering is unavailable for the configured Terra account. Ask your administrator to have Terra enable Vantage ${terraEnvironment().toLowerCase()} access, then try again. Your form details have been kept.`,
+                    httpStatus: attempt.status,
+                    transient: false,
+                });
+            }
             const transient = attempt.status >= 500 && !attempt.body?.order_id;
             const terraDetail = this.extractTerraErrorDetail(attempt.body);
             const countryUnsupported = isUnsupportedUsDelivery(attempt.body, input.shipping_address?.country_code);

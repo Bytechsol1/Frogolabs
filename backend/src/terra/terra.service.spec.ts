@@ -180,6 +180,28 @@ describe('sandbox registration and manual orders', () => {
     const env = { ...process.env };
     afterEach(() => { process.env = { ...env }; });
 
+    it.each([
+        ['entitlement_required', 'TERRA_VANTAGE_ACCESS_REQUIRED', 503],
+        ['product_disabled', undefined, 400],
+    ])('handles forbidden ordering (%s) without retrying or saving an order', async (upstreamCode, code, status) => {
+        Object.assign(process.env, { TERRA_ENVIRONMENT: 'sandbox', TERRA_REQUIRE_LIVE_DATA: 'false',
+            TERRA_SANDBOX_AUTO_REPORTS: 'false', TERRA_DEV_ID: 'test', TERRA_API_KEY: 'test' });
+        const save = jest.fn();
+        const service = new TerraService({ patient: { findFirst: jest.fn().mockResolvedValue({ id: 'patient' }) },
+            terraOrder: { upsert: save } } as any);
+        const post = jest.spyOn(service as any, 'postOrderToTerra').mockResolvedValue({ ok: false, status: 403,
+            body: { code: upstreamCode, detail: 'Vantage access is unavailable' } });
+        const input = { patient_id: 'patient', variant_id: '100091', collection_type: 'AT_HOME' as const,
+            recipient: { first_name: 'Demo', last_name: 'Patient', email: 'patient@example.com', phone_number: '+12025550123', date_of_birth: '1990-01-01', gender_at_birth: 'male' as const },
+            shipping_address: { address_line_1: '123 Test St', city: 'Austin', administrative_area: 'TX', postal_code: '78701', country_code: 'US' } };
+        await expect(service.createOrder(input, 'clinic')).rejects.toMatchObject({ status, response: {
+            code, httpStatus: 403, transient: false,
+            message: code ? expect.stringContaining('enable Vantage sandbox access') : 'Vantage access is unavailable',
+        } });
+        expect(post).toHaveBeenCalledTimes(1);
+        expect(save).not.toHaveBeenCalled();
+    });
+
     it('allows manual sandbox ordering without generating automatic reports', async () => {
         process.env.TERRA_ENVIRONMENT = 'sandbox';
         process.env.TERRA_REQUIRE_LIVE_DATA = 'false';

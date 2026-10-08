@@ -359,7 +359,9 @@ export function OrderLabTestModal({ patient, onOrderCreated, beforeOpen, disable
             const terraDetail = [terraBody?.detail, terraBody?.message, terraBody?.error, terraBody?.title]
                 .find((v: unknown) => typeof v === 'string' && v.trim().length > 0) || null;
 
-            if (data?.code === 'TERRA_SHIPPING_COUNTRY_UNSUPPORTED') {
+            if (data?.code === 'TERRA_VANTAGE_ACCESS_REQUIRED') {
+                setError(data.message);
+            } else if (data?.code === 'TERRA_SHIPPING_COUNTRY_UNSUPPORTED') {
                 setCountryRejected(true);
                 setError(data.message);
             } else if (data?.transient && !fieldDetail) {
