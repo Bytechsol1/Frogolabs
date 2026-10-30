@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { DM_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "./clinic-theme.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { BrandingProvider } from "@/context/BrandingContext";
 
 const dmSans = DM_Sans({
   variable: "--font-sans",
@@ -27,7 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${dmSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-          {children}
+          <BrandingProvider>{children}</BrandingProvider>
         </AuthProvider>
       </body>
     </html>

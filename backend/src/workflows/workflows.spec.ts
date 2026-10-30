@@ -23,7 +23,7 @@ describe('Workflow status authorization', () => {
     it('rejects a workflow outside the authenticated clinic before writing history', async () => {
         prisma.workflow.findFirst.mockResolvedValue(null);
         await expect(controller.updateStatus('foreign', { status: 'COMPLETED' }, request('CLINIC_USER', 'clinic-a'))).rejects.toBeInstanceOf(NotFoundException);
-        expect(prisma.workflow.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'foreign', clinic_id: 'clinic-a' } }));
+        expect(prisma.workflow.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'foreign', clinic_id: 'clinic-a', patient: { clinic_id: 'clinic-a' } } }));
         expect(prisma.workflow.update).not.toHaveBeenCalled();
     });
 

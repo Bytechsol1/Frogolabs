@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 ﻿import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
@@ -5,6 +6,9 @@ import { AuthDtoPipe, registrationSchema, verifyOtpSchema } from './auth.dto';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 describe('Email verification authentication', () => {
+    const originalSecret = process.env.JWT_SECRET;
+    beforeAll(() => { process.env.JWT_SECRET = randomBytes(32).toString('hex'); });
+    afterAll(() => { if (originalSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = originalSecret; });
     const users = { findOne: jest.fn() };
     const jwt = { sign: jest.fn().mockReturnValue('fixture-token') };
     const otp = { register: jest.fn() };

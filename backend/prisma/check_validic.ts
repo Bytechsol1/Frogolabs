@@ -1,15 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 
-const url = 'postgresql://postgres.yhzsnweespehnpfecptc:Bytechsol1122@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require';
+const url = process.env.DATABASE_URL;
+if (!url) throw new Error('Set DATABASE_URL before running this connection check.');
 
 async function test() {
-    console.log('Testing Exact Supabase Pooler URL:', url);
+    console.log('Checking the configured PostgreSQL connection.');
     const prisma = new PrismaClient({ datasources: { db: { url } } });
     try {
         const count = await prisma.patient.count();
         console.log(`\n🎉 BINGO! SUCCESS! Patient Count = ${count}\n`);
     } catch (err: any) {
-        console.error('Error:', err.message);
+        console.error('Database connection check failed:', err?.code || 'connection_error');
+        process.exitCode = 1;
     } finally {
         await prisma.$disconnect();
     }

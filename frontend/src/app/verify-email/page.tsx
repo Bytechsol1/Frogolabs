@@ -1,5 +1,8 @@
 'use client';
 
+import { BrandMark, BrandSurface, useBrandTitle } from '@/components/ClinicBrand';
+import { usePublicBranding } from '@/context/BrandingContext';
+
 import { EmailInput } from '@/components/ui/email-input';
 import { normalizeEmail } from '@/lib/email-validation';
 import { useEmailValidation } from '@/lib/use-email-validation';
@@ -16,6 +19,9 @@ import { useAuth } from '@/context/AuthContext';
 import { EMAIL_VERIFICATION_KEY, maskEmail, prepareEmailVerification } from '@/lib/email-verification';
 
 export default function VerifyEmailPage() {
+    const { branding: publicBranding, clinicId, error: clinicError } = usePublicBranding();
+    const branding = publicBranding;
+    useBrandTitle(branding);
     const router = useRouter();
     const { login } = useAuth();
     const [email, setEmail] = useState('');
@@ -104,10 +110,11 @@ export default function VerifyEmailPage() {
     }
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-[#f7f9fb] px-4 py-6 text-[#080e1e]">
+        <BrandSurface branding={branding} className="flex items-center justify-center min-h-screen bg-[#f7f9fb] px-4 py-6 text-[#080e1e]">
+            {clinicError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{clinicError}</p>}
             <div className="w-full max-w-md space-y-6">
                 <div className="flex justify-center">
-                    <img src="/logo.jpg" alt="Frigo Flow" className="h-auto w-52 max-w-full mix-blend-multiply" />
+                    <BrandMark branding={branding} />
                 </div>
                 <Card className="gap-0 rounded-3xl border border-[#e6e0ce] bg-white py-0 shadow-[0_8px_30px_rgba(8,14,30,0.05)] ring-0">
                     <CardHeader className="border-b border-[#e6e0ce] bg-[#faf8f3] p-5 sm:p-6">
@@ -146,7 +153,7 @@ export default function VerifyEmailPage() {
                             {success && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 text-center font-medium">{success}</p>}
                             <Button type="submit" className="h-11 w-full gap-2 rounded-full bg-[#080e1e] text-white font-bold hover:bg-[#080e1e] focus-visible:ring-[#cbb28d]/50" disabled={!!busy || !ready || !/^\d{6}$/.test(otp.join(''))}>{busy === 'verify' ? <><Loader2 className="h-4 w-4 animate-spin text-[#cbb28d]" aria-hidden="true" />Verifying...</> : <><ShieldCheck className="h-4 w-4 text-[#cbb28d]" aria-hidden="true" />Verify Code</>}</Button>
                             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[#e6e0ce] pt-3 text-xs">
-                                <Link href="/signup" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg font-medium text-slate-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8c7657]"><ArrowLeft className="w-4 h-4" /> Change email / Back</Link>
+                                <Link href={clinicId ? `/login?clinic=${encodeURIComponent(clinicId)}` : "/signup"} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg font-medium text-slate-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8c7657]"><ArrowLeft className="w-4 h-4" /> Change email / Back</Link>
                                 <button type="button" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg text-[#8c7657] font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8c7657]" onClick={resend} disabled={!!busy || !ready || seconds > 0}><RefreshCw className={`w-3.5 h-3.5 ${busy === 'resend' ? 'animate-spin' : ''}`} />{busy === 'resend' ? 'Sending...' : seconds > 0 ? `Resend code in ${seconds}s` : 'Resend Code'}</button>
                             </div>
                             <p className="text-center text-sm"><Link href="/login" className="font-semibold text-[#080e1e] underline decoration-[#cbb28d] underline-offset-4">Sign in</Link></p>
@@ -154,6 +161,6 @@ export default function VerifyEmailPage() {
                     </CardContent>
                 </Card>
             </div>
-        </div>
+        </BrandSurface>
     );
 }

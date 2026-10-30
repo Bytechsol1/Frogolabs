@@ -9,7 +9,7 @@ export class DashboardService {
     constructor(private prisma: PrismaService) { }
 
     async getAdminStats() {
-        const include = { patient: true, clinic: { select: { name: true } } } as const;
+        const include = { patient: { omit: { validic_marketplace_url: true } }, clinic: { select: { name: true } } } as const;
         const [totalClinics, totalPatients, activeWorkflows, completedWorkflows, resultsReady, recent, attention, telemetry, activeClinics] = await this.prisma.$transaction([
             this.prisma.clinic.count({ where: registeredClinicWhere }),
             this.prisma.patient.count({ where: registeredPatientWhere }),
@@ -18,7 +18,7 @@ export class DashboardService {
             this.prisma.patient.count({ where: { ...registeredPatientWhere, results: { some: readyResultWhere() } } }),
             this.prisma.workflow.findMany({ where: { ...displayedWorkflowWhere(), status: { not: 'COMPLETED' } }, take: 5, orderBy: { updated_at: 'desc' }, include }),
             this.prisma.workflow.findMany({ where: { ...displayedWorkflowWhere(), status: { in: ['RESULTS_READY', 'SAMPLE_COLLECTED', 'KIT_SHIPPED'] } }, take: 3, orderBy: { updated_at: 'desc' }, include }),
-            this.prisma.patient.findMany({ where: { ...registeredPatientWhere, validic_user_id: { not: null } }, take: 3, orderBy: { updated_at: 'desc' } }),
+            this.prisma.patient.findMany({ omit: { validic_marketplace_url: true }, where: { ...registeredPatientWhere, validic_user_id: { not: null } }, take: 3, orderBy: { updated_at: 'desc' } }),
             this.prisma.clinic.findMany({
                 // The clinic directory treats legacy missing status as Active.
                 where: { ...registeredClinicWhere, OR: [{ status: 'Active' }, { status: null }, { status: '' }] },

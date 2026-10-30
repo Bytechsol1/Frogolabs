@@ -36,6 +36,7 @@ model User {
   email         String    @unique
   password_hash String
   email_verified Boolean @default(false)
+  is_clinic_admin Boolean @default(false)
   role          Role      @default(CLINIC_USER)
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
@@ -46,6 +47,11 @@ model User {
 }
 
 model Clinic {
+  branding_logo String?
+  primary_color String @default("#0F766E")
+  secondary_color String @default("#14B8A6")
+  information String @default("")
+  services Json @default("[]")
   is_demo      Boolean  @default(false)
   id           String    @id @default(uuid())
   name         String
@@ -60,6 +66,17 @@ model Clinic {
   patients     Patient[]
   workflows    Workflow[]
   results      LabResult[]
+  logo_asset   ClinicLogo?
+}
+
+model ClinicLogo {
+  clinic_id    String   @id
+  file_name    String
+  mime_type    String
+  data         Bytes
+  updated_at   DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinic_id], references: [id], onDelete: Cascade)
 }
 
 model Patient {
@@ -87,6 +104,8 @@ model Patient {
   metrics     HealthMetric[]
   terraOrders TerraOrder[]
   sandboxReportJobs SandboxReportJob[]
+
+  @@index([clinic_id])
 }
 
 model Workflow {
@@ -104,6 +123,8 @@ model Workflow {
   results    LabResult[]
   notifications Notification[]
   terraOrders TerraOrder[]
+
+  @@index([clinic_id])
 }
 
 model WorkflowHistory {
@@ -139,7 +160,17 @@ model LabResult {
   clinic      Clinic?     @relation(fields: [clinic_id], references: [id])
   user        User?       @relation(fields: [uploaded_by], references: [id])
   access      LabResultAccess?
+    stored_file LabResultFile?
   terraOrders TerraOrder[]
+
+  @@index([patient_id])
+}
+
+model LabResultFile {
+  lab_result_id String @id
+  mime_type String
+  data Bytes
+  lab_result LabResult @relation(fields: [lab_result_id], references: [id], onDelete: Cascade)
 }
 
 model LabResultAccess {

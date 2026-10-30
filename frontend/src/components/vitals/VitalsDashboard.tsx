@@ -137,7 +137,7 @@ export const VitalsDashboard: React.FC<VitalsDashboardProps> = ({
     return (
         <div className="space-y-6">
             {/* Header & Device Sync Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-2xl shadow-md">
+            <div className="vitals-banner flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-2xl shadow-md">
                 <div>
                     <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-1">
                         <Activity className="w-4 h-4 text-indigo-400" />

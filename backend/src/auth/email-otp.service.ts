@@ -82,7 +82,7 @@ export class EmailOtpService {
             } });
             const user = await tx.user.create({ data: {
                 email: data.email, name: data.contactName, password_hash: await bcrypt.hash(data.password, 12),
-                email_verified: false, role: 'CLINIC_USER', clinic_id: clinic.id,
+                email_verified: false, role: 'CLINIC_USER', clinic_id: clinic.id, is_clinic_admin: true,
             } });
             return this.reserve(tx, data.email, user);
         });

@@ -51,7 +51,8 @@ describe('email validation at HTTP boundaries (no database or mail delivery)', (
                 { provide: ValidicService, useValue: { provisionUser: jest.fn().mockResolvedValue(null) } },
             ],
         }).overrideGuard(JwtAuthGuard).useValue({ canActivate(context: ExecutionContext) {
-            context.switchToHttp().getRequest<{ user: typeof identity }>().user = identity;
+            const req = context.switchToHttp().getRequest();
+            req.user = req.path.includes('/clinics') ? { ...identity, role: 'ADMIN', clinic_id: null } : identity;
             return true;
         } }).compile();
         app = module.createNestApplication();

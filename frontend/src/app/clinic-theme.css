@@ -1,0 +1,19 @@
+/* Scope the established design system to a clinic. Platform admin stays unchanged. */
+.clinic-theme { background: color-mix(in srgb, var(--brand-secondary) 5%, #f8fafc); color: #17212f; }
+.clinic-theme :is(h1, h2, h3) { color: var(--brand-ink); }
+.clinic-theme .vitals-banner h2 { color: inherit; }
+.clinic-theme :is([class~="bg-[#080e1e]"], [class~="bg-[#091124]"], [class~="bg-[#0d162b]"], [class~="bg-[#121c36]"]) {
+  background-color: var(--brand-primary) !important; color: var(--brand-on-primary) !important;
+}
+.clinic-theme :is([class~="bg-[#080e1e]"], [class~="bg-[#091124]"], [class~="bg-[#0d162b]"], [class~="bg-[#121c36]"]) :is(svg, span) { color: inherit; }
+.clinic-theme :is([class~="text-[#080e1e]"], [class~="text-[#091124]"], [class~="text-primary"]) { color: var(--brand-ink); }
+.clinic-theme :is([class~="text-[#8c7657]"], [class~="text-[#cbb28d]"]) { color: var(--brand-accent-ink); }
+.clinic-theme :is([class*="border-[#e4dec3]"], [class*="border-[#e6e0ce]"], [class*="border-[#ded8c4]"], [class*="border-[#e8e2cf]"]) {
+  border-color: color-mix(in srgb, var(--brand-secondary) 25%, #dce5e7);
+}
+.clinic-theme :is([class*="bg-[#e4dec3]"], [class*="bg-[#faf8f3]"], [class*="bg-[#f7f3e8]"]) { background-color: color-mix(in srgb, var(--brand-secondary) 9%, white); }
+.clinic-theme :is(button, a):is([class*="hover:bg-[#121c36]"], [class*="hover:bg-[#080e1e]"]):hover {
+  background-color: var(--brand-primary) !important; color: var(--brand-on-primary) !important; filter: brightness(.94);
+}
+.clinic-theme :is(input, textarea, select):focus-visible { outline-color: var(--brand-ink); border-color: var(--brand-ink); }
+.clinic-theme [data-slot="card"] { border-top-color: color-mix(in srgb, var(--brand-primary) 25%, #e2e8f0); }

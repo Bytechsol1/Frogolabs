@@ -66,7 +66,7 @@ export class SandboxReportsService implements OnModuleInit, OnModuleDestroy {
             const jobs = await this.prisma.sandboxReportJob.findMany({
                 where: { status: { notIn: ['COMPLETED', 'FAILED'] }, next_attempt_at: { lte: new Date() } },
                 orderBy: { next_attempt_at: 'asc' }, take: 30,
-                include: { patient: { select: { clinic_id: true } } },
+                include: { patient: { select: { clinic_id: true } }, order: { select: { patient_id: true } } },
             });
             for (let offset = 0; offset < jobs.length; offset += 3) {
               await Promise.all(jobs.slice(offset, offset + 3).map(async job => {
@@ -80,6 +80,7 @@ export class SandboxReportsService implements OnModuleInit, OnModuleDestroy {
                 if (lease.count !== 1) return;
                 try {
                     let orderId = job.order_id;
+                    if (orderId && job.order?.patient_id !== job.patient_id) throw new Error('Sandbox job order ownership mismatch.');
                     if (!orderId) {
                         const gb = job.country_code === 'GB';
                         // Sandbox fixtures only: never invent clinical demographics for the patient.

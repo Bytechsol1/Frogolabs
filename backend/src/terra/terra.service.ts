@@ -381,11 +381,12 @@ export class TerraService {
         if (process.env.TERRA_REQUIRE_LIVE_DATA === 'true' && terraEnvironment() !== 'PRODUCTION') {
             throw new BadRequestException('Live lab ordering is not enabled. Terra production access is required for real lab tests.');
         }
+        const patient = await this.prisma.patient.findFirst({ where: { id: input.patient_id, ...(clinicId ? { clinic_id: clinicId } : {}) } });
+        if (!patient) throw new NotFoundException('Patient not found');
+
         this.assertCredentialsConfigured();
 
         input = normalizeTerraOrder(input);
-        const patient = await this.prisma.patient.findFirst({ where: { id: input.patient_id, ...(clinicId ? { clinic_id: clinicId } : {}) } });
-        if (!patient) throw new NotFoundException('Patient not found');
 
         const clientOrderReferenceId = automation?.referenceId || `frigoflow-${input.patient_id}-${randomUUID()}`;
         if (automation) {

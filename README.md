@@ -60,7 +60,7 @@ npm run dev:backend    # NestJS API on http://localhost:3001
 npm run dev:frontend   # Next.js app on http://localhost:3000
 ```
 
-Open [http://localhost:3000/login](http://localhost:3000/login).
+Open the login URL printed by `npm run dev` (normally [http://localhost:3000/login](http://localhost:3000/login)). If another app occupies that port, the launcher chooses an available port between 3000 and 3010. The first backend compilation can take 1-2 minutes; keep the terminal open while the startup progress is shown.
 
 > The frontend proxies `/api/*` to the backend (`next.config.ts` rewrites), so the browser only ever talks to `localhost:3000` — no CORS issues in dev.
 
@@ -87,6 +87,66 @@ Clinic registration requires working SMTP settings in `backend/.env`: `SMTP_HOST
 If credentials are missing or the mail server rejects the message, registration returns an error and the signup form does not claim a code was sent. Codes are not returned in the API response or printed in registration logs. Pending verification data is stored in the database to validate the emailed code; storing it is separate from email delivery.
 
 ## Architecture notes
+
+### Clinic branding and tenant isolation
+
+Clinic administrators can manage their clinic name, logo, primary/secondary colors, public information, and service descriptions at `/dashboard/branding`. Settings include a live preview, color contrast handling, and PNG/JPEG/WebP logo uploads up to 2 MB. Staff dashboards and clinic-specific sign-in and patient-result pages share the saved theme. Platform administration keeps Frigo Flow branding.
+
+Dashboard navbars show the existing Frigo Flow logo first and the current clinic's uploaded logo alongside it, without clinic-name text. Saving a logo upload, replacement or removal refreshes the navbar immediately. Clinics without an uploaded logo, or with a logo that cannot load, show only the Frigo Flow logo. Clinic names remain in settings and patient pages.
+
+For Supabase or another remote PostgreSQL database, logo files are stored as binary data in the private `ClinicLogo` table, linked to their clinic. The `Clinic` table stores the name, colors, information, services and logo filename. Upload/replacement and removal update the image and clinic reference in one transaction; the existing backend image endpoint serves validated image bytes. Remote databases never fall back to local logo files. `CLINIC_LOGO_STORAGE` can explicitly select `database` for tests or development; existing local-only databases retain filesystem compatibility. Keep `DATABASE_URL` and `DIRECT_URL` in the server's private environment. `docs/supabase-live-upgrade.sql` is the reviewed, one-time upgrade from the inspected legacy Supabase schema; it adds the missing application tables and branding columns without dropping existing data. Moving local records into an existing live project is a separate, explicitly authorized operation.
+
+New uploaded lab report files are also stored in PostgreSQL, in the private `LabResultFile` table. The report record and its bytes are created atomically. Existing staff and patient download URLs retain their authorization checks. Apply `backend/prisma/migrations/202610290002_database_report_files/migration.sql` after the legacy Supabase upgrade. Remote database connections never read report bytes from the local filesystem; legacy local report files are not automatically copied.
+
+The single complete application schema export is [docs/frigo-flow-schema.sql](docs/frigo-flow-schema.sql). It creates a fresh PostgreSQL/AWS database with all 16 application tables, relationships, indexes, tenant triggers and RLS flags. It contains no business records or credentials. Historical upgrade scripts and Prisma migrations are separate from this fresh-database export.
+
+For an existing local database, apply the additive migration and regenerate the client before starting the updated backend:
+
+```powershell
+npm run db:branding --workspace=backend
+npm run prisma:generate --workspace=backend
+npm run dev
+```
+
+For a fresh local database, first use the existing `npm run db:setup`, then `npm run db:branding --workspace=backend` to install the ownership triggers. The local migration helper refuses remote databases. The reviewed migration for other environments is `backend/prisma/migrations/202610280001_clinic_branding/migration.sql`; this implementation does not deploy it to production. Stop local backend processes before client generation if Windows reports a locked Prisma engine DLL.
+
+Existing users are **not** automatically promoted. A platform administrator should click the dashboard **Settings** gear, then **Branding permissions** (`/dashboard/settings/users`), and explicitly grant **Branding administrator** to a staff member already associated with the intended clinic. Managers with that permission see **Clinic Branding** in the dashboard navigation and can edit only their own clinic. Settings also has a direct **Clinic branding** link for platform administrators. Permissions refresh when returning to the app or navigating inside the dashboard, so an open session picks up grants and revocations; the API checks the current database permission on every request. Newly registered clinic owners receive that permission only for the clinic created by their registration. Public registration does not join an existing clinic.
+
+To review:
+
+1. Sign in as a platform administrator, select a clinic at `/dashboard/branding`, and grant its manager permission where appropriate.
+2. Sign in as that clinic manager. Edit its settings, preview colors/logo, save, and reload. Service descriptions do not create Terra products or clinical results.
+3. Use the **Patient results portal** link on the branding page. It carries an explicit clinic context using the existing clinic identifier, without custom domains. The patient entry page shows the clinic name, logo, and colors; clinic information and service descriptions remain saved in branding settings but are hidden on that page. No patient information is returned by the public branding API.
+4. A patient still needs the result identifier and its matching, unexpired access code. Changing the clinic link never changes authorization. A valid code for a different result or clinic is rejected.
+5. Repeat for a second clinic and check the separate theme and records. Clinic staff cannot select another clinic through URL or request-body IDs. Platform administrators retain clinic-management access.
+
+Report files are no longer served as unrestricted static assets. The existing `/uploads/lab-results/:filename` URLs require staff authentication and result ownership; the patient report endpoint separately checks its access code and clinic. Preserve both `uploads/lab-results` and `uploads/clinic-logos` on durable storage and include them in backups. Existing filenames and record ownership are not rewritten. Legacy inconsistent ownership is not guessed or reassigned; an administrator must investigate such records.
+
+Validic callbacks now require a server-only `VALIDIC_WEBHOOK_SECRET` and a matching Bearer authorization header configured on the trusted sender or forwarding gateway. They fail closed until configured. This is an application shared-header requirement, not a claim that the provider implements a particular signature standard. Shared legacy Validic patient identifiers are rejected when ambiguous; repair those mappings with verified provider information. No shared fallback patient or marketplace identity is assigned after provisioning failures. Existing shared links are blocked, ordinary patient responses omit marketplace bearer URLs, and only the ownership-checked connection endpoint returns a validated HTTPS link. JWT signing now requires the existing server-only JWT_SECRET configuration instead of a shared fallback key. Existing Terra HMAC verification, event deduplication, and transactional workflows remain in place.
+
+Validation commands from the repository root:
+
+```powershell
+node node_modules/jest/bin/jest.js --config backend/package.json --runInBand
+npm run test:tenants --workspace=backend
+npm run test:branding --workspace=frontend
+npm run build:backend
+npm run build:frontend
+```
+
+The tenant test command creates a randomly named **disposable local database**, applies the complete schema and ownership migration, and exercises two synthetic clinics through real HTTP controllers and PostgreSQL. It removes only that database afterward. It does not enable the existing `AUTH_DB_TESTS` suites against application data. For optional headless Chrome checks, build the backend, run a local Frigo frontend, then:
+
+```powershell
+$env:TENANT_BROWSER_TESTS = '1'
+$env:FRIGO_TEST_FRONTEND = 'http://localhost:3002'
+npm run test:tenants --workspace=backend
+Remove-Item Env:TENANT_BROWSER_TESTS
+Remove-Item Env:FRIGO_TEST_FRONTEND
+```
+
+Browser checks use a temporary profile and fixture backend; API traffic is redirected to the disposable database. They sign in with passwords generated only for the disposable fixtures, grant manager access through Settings, check live grant/revoke permission refresh and unauthorized restrictions, and verify mobile navigation, live preview, logo upload/replacement/removal, every branding field after save/reload, staff/dashboard/sign-in branding, patient result access, and mobile layout for both clinics. Screenshots are saved under the ignored `.devtmp/branding-review` directory. `FRIGO_TEST_BROWSER` optionally selects a locally installed Chromium executable.
+
+These changes enforce application/Prisma authorization and database ownership triggers; they do not configure PostgreSQL RLS or browser database access. They do not establish HIPAA compliance. Production hosting, private network/database access, TLS, encryption, durable storage/backups, audit/incident processes, provider BAAs, and legal/operational requirements need separate verification.
 
 ### Automatic Terra sandbox reports
 

@@ -1,12 +1,12 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
 
 @Injectable()
 export class ValidicService {
     private readonly logger = new Logger(ValidicService.name);
-    private readonly orgId = process.env.VALIDIC_ORG_ID || '6a70dbcbf80c7e63e07eab3e';
-    private readonly token = process.env.VALIDIC_API_TOKEN || 'vx-2154b99c1d76a5cdd14657f240b8903c6de448eb4d474c07381c784439907aa6';
+    private readonly orgId = process.env.VALIDIC_ORG_ID;
+    private readonly token = process.env.VALIDIC_API_TOKEN;
     private readonly baseUrl = process.env.VALIDIC_BASE_URL || 'https://api.prod.validic.com';
 
     constructor(private readonly prisma: PrismaService) { }
@@ -14,12 +14,15 @@ export class ValidicService {
     /**
      * Auto-provisions a user in Validic platform using the Frigo Flow Patient ID as uid.
      */
-    async provisionUser(patientId: string) {
+    async provisionUser(patientId: string, clinicId: string | null) {
+        await this.authorizedPatient(patientId, clinicId);
+        if (!this.orgId || !this.token) throw new ServiceUnavailableException('Device integration is not configured.');
         try {
             const patient = await this.prisma.patient.findUnique({ where: { id: patientId } });
             if (!patient) throw new NotFoundException(`Patient with ID ${patientId} not found`);
 
             if (patient.validic_user_id && patient.validic_marketplace_url && !patient.validic_marketplace_url.includes('demo_')) {
+                await this.assertUniqueConnection(patient);
                 return {
                     validic_user_id: patient.validic_user_id,
                     marketplace_url: patient.validic_marketplace_url,
@@ -34,11 +37,13 @@ export class ValidicService {
             const validicUserData = response.data;
             const validicUserId = validicUserData?.id || validicUserData?._id;
             const marketplaceUrl = validicUserData?.marketplace?.url || (validicUserData?.marketplace?.token ? `https://syncmydevice.com?token=${validicUserData.marketplace.token}` : null);
+            if (typeof validicUserId !== 'string' || typeof marketplaceUrl !== 'string' || (validicUserData.uid && validicUserData.uid !== patientId)) throw new ServiceUnavailableException('The provider did not return a verified patient connection.');
+            await this.assertUniqueConnection({ id: patientId, validic_user_id: validicUserId, validic_marketplace_url: marketplaceUrl });
 
             const updatedPatient = await this.prisma.patient.update({
-                where: { id: patientId },
+                where: { id: patientId, ...(clinicId ? { clinic_id: clinicId } : {}) },
                 data: {
-                    validic_user_id: validicUserId || `validic_${patientId.slice(0, 8)}`,
+                    validic_user_id: validicUserId,
                     validic_marketplace_url: marketplaceUrl,
                 },
             });
@@ -49,37 +54,25 @@ export class ValidicService {
                 marketplace_url: updatedPatient.validic_marketplace_url,
             };
         } catch (error) {
-            this.logger.error(`Failed to provision Validic user for patient ${patientId}`, error?.response?.data || error.message);
-            const fallbackUrl = `https://syncmydevice.com?token=554d6fa085155baab3674479e0c017ae729b8eee55af72265751abf41f0b0cef`;
-            const fallbackUserId = `6a72595c7e0ce4f000f2063d`;
-
-            await this.prisma.patient.update({
-                where: { id: patientId },
-                data: {
-                    validic_user_id: fallbackUserId,
-                    validic_marketplace_url: fallbackUrl,
-                },
-            }).catch(() => { });
-
-            return {
-                validic_user_id: fallbackUserId,
-                marketplace_url: fallbackUrl,
-            };
+            this.logger.warn('Device provisioning failed; no shared fallback identity was assigned.');
+            throw new ServiceUnavailableException('Unable to connect this patient to the device provider.');
         }
     }
 
     /**
      * Gets or provisions the Validic Marketplace URL for device connection portal.
      */
-    async getConnectUrl(patientId: string) {
+    async getConnectUrl(patientId: string, clinicId: string | null) {
+        await this.authorizedPatient(patientId, clinicId);
         const patient = await this.prisma.patient.findUnique({ where: { id: patientId } });
         if (!patient) throw new NotFoundException('Patient not found');
 
         if (patient.validic_marketplace_url && !patient.validic_marketplace_url.includes('demo_')) {
+            await this.assertUniqueConnection(patient);
             return { marketplace_url: patient.validic_marketplace_url, validic_user_id: patient.validic_user_id };
         }
 
-        return this.provisionUser(patientId);
+        return this.provisionUser(patientId, clinicId);
     }
 
     /**
@@ -110,7 +103,8 @@ export class ValidicService {
     /**
      * Retrieves health metrics for a patient, grouped by type or sorted by date.
      */
-    async getPatientMetrics(patientId: string, metricType?: string) {
+    async getPatientMetrics(patientId: string, metricType: string | undefined, clinicId: string | null) {
+        await this.authorizedPatient(patientId, clinicId);
         const whereClause: any = { patient_id: patientId };
         if (metricType) whereClause.metric_type = metricType;
 
@@ -136,7 +130,9 @@ export class ValidicService {
     /**
      * Seeds realistic sample vitals for testing dashboard visualizations.
      */
-    async seedDemoMetrics(patientId: string) {
+    async seedDemoMetrics(patientId: string, clinicId: string | null) {
+        await this.authorizedPatient(patientId, clinicId);
+        if (process.env.NODE_ENV === 'production') throw new BadRequestException('Demo measurements are disabled in production.');
         const now = new Date();
         const days = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
 
@@ -195,46 +191,41 @@ export class ValidicService {
     /**
      * Processes incoming webhook payloads pushed by Validic.
      */
+    private async authorizedPatient(patientId: string, clinicId: string | null) {
+        const patient = await this.prisma.patient.findFirst({ where: { id: patientId, ...(clinicId ? { clinic_id: clinicId } : {}) } });
+        if (!patient) throw new NotFoundException('Patient not found');
+        return patient;
+    }
+
+    private async assertUniqueConnection(patient: { id: string; validic_user_id: string | null; validic_marketplace_url: string | null }) {
+        if (!patient.validic_user_id || !patient.validic_marketplace_url) throw new ServiceUnavailableException('This device connection needs a verified patient mapping.');
+        let url: URL;
+        try { url = new URL(patient.validic_marketplace_url); }
+        catch { throw new ServiceUnavailableException('This device connection needs a verified patient mapping.'); }
+        if (url.protocol !== 'https:' || url.username || url.password) throw new ServiceUnavailableException('This device connection needs a verified patient mapping.');
+        const duplicate = await this.prisma.patient.count({ where: { id: { not: patient.id }, OR: [
+            { validic_user_id: patient.validic_user_id }, { validic_marketplace_url: patient.validic_marketplace_url },
+        ] } });
+        if (duplicate) throw new ServiceUnavailableException('This device connection is shared by multiple patients and needs a verified mapping.');
+    }
     async processWebhook(payload: any) {
-        this.logger.log(`Received Validic Webhook payload: ${JSON.stringify(payload)}`);
-        const dataItems = Array.isArray(payload) ? payload : (payload?.data || [payload]);
-        let processedCount = 0;
-
-        for (const item of dataItems) {
-            const validicUserId = item.user_id || item.uid;
-            if (!validicUserId) continue;
-
-            const patient = await this.prisma.patient.findFirst({
-                where: {
-                    OR: [
-                        { validic_user_id: validicUserId },
-                        { id: validicUserId },
-                    ]
-                }
-            });
-
-            if (!patient) {
-                this.logger.warn(`Webhook patient match not found for Validic user ${validicUserId}`);
-                continue;
-            }
-
-            const metricType = item.type || item.category || 'biometrics';
-            const value = typeof item.value === 'object' ? JSON.stringify(item.value) : String(item.value ?? item.summary ?? '');
-            const numericValue = typeof item.value === 'number' ? item.value : (item.systolic || item.steps || item.weight || null);
-
-            await this.saveMetric({
-                patient_id: patient.id,
-                metric_type: metricType,
-                value,
-                numeric_value: numericValue,
-                unit: item.unit || '',
-                source: item.source || 'Validic Direct',
-                recorded_at: item.timestamp ? new Date(item.timestamp) : new Date(),
-            });
-
-            processedCount++;
+        const items = Array.isArray(payload) ? payload : (payload?.data || [payload]);
+        if (!Array.isArray(items) || items.length > 1000) throw new BadRequestException('Invalid device event batch.');
+        const resolved: { item: any; patientId: string }[] = [];
+        for (const item of items) {
+            const identifier = item?.user_id || item?.uid;
+            if (typeof identifier !== 'string') continue;
+            const patients = await this.prisma.patient.findMany({ where: { OR: [{ validic_user_id: identifier }, { id: identifier }] }, select: { id: true }, take: 2 });
+            if (patients.length !== 1) throw new BadRequestException('Device event has no unambiguous patient mapping.');
+            resolved.push({ item, patientId: patients[0].id });
         }
-
-        return { status: 'success', processed: processedCount };
+        for (const { item, patientId } of resolved) {
+            await this.saveMetric({ patient_id: patientId, metric_type: String(item.type || item.category || 'biometrics'),
+                value: typeof item.value === 'object' ? JSON.stringify(item.value) : String(item.value ?? item.summary ?? ''),
+                numeric_value: typeof item.value === 'number' ? item.value : undefined,
+                unit: String(item.unit || ''), source: String(item.source || 'Validic Direct'), recorded_at: item.timestamp ? new Date(item.timestamp) : new Date(),
+            });
+        }
+        return { status: 'success', processed: resolved.length };
     }
 }

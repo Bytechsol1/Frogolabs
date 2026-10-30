@@ -5,6 +5,7 @@ export function patientDirectoryQuery(clinicId: string | null) {
     const scope = clinicId ? { clinic_id: clinicId } : {};
     return {
         where: { ...registeredPatientWhere, ...scope },
+        omit: { validic_marketplace_url: true },
         include: {
             clinic: { select: { name: true } },
             workflows: {

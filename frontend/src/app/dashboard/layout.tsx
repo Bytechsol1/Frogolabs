@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LabReportNotifications } from "@/components/LabReportNotifications";
+import { NavbarBrand, BrandSurface, useBrandTitle } from '@/components/ClinicBrand';
+import { useBranding } from '@/context/BrandingContext';
 import {
     LayoutDashboard,
     Users,
@@ -24,10 +26,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-    const { user, logout, isLoading } = useAuth();
+    const { user, logout, isLoading, refreshUser } = useAuth();
+    const { branding } = useBranding();
+    useBrandTitle(branding);
     const router = useRouter();
     const pathname = usePathname();
     const [showSandboxNotice, setShowSandboxNotice] = useState(false);
+
+    // Permissions are read from the server again when navigating inside the dashboard.
+    useEffect(() => { void refreshUser(); }, [pathname, refreshUser]);
 
     useEffect(() => {
         if (!user?.token) return;
@@ -42,16 +49,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     useEffect(() => {
         if (!isLoading && !user) {
-            router.push('/login');
+            window.location.replace('/login');
         }
-    }, [isLoading, user, router]);
+    }, [isLoading, user]);
 
     const menuItems = [
         { title: "Dashboard", url: "/dashboard", roles: ["ADMIN", "CLINIC_USER"], icon: LayoutDashboard },
         { title: "Clinics", url: "/dashboard/clinics", roles: ["ADMIN"], icon: Building2 },
+        { title: 'Clinic Branding', url: '/dashboard/branding', roles: ['ADMIN'], icon: Settings },
         { title: "Patients", url: "/dashboard/patients", roles: ["ADMIN", "CLINIC_USER"], icon: Users },
         { title: "Sessions", url: "/dashboard/workflows", roles: ["ADMIN", "CLINIC_USER"], icon: Activity },
         { title: "Lab Results", url: "/dashboard/lab-results", roles: ["ADMIN", "CLINIC_USER"], icon: FlaskConical },
+        ...(user?.is_clinic_admin ? [{ title: 'Clinic Branding', url: '/dashboard/branding', roles: ['CLINIC_USER'], icon: Settings }] : []),
     ];
 
     const filteredItems = menuItems.filter(item => item.roles.includes(user?.role || ''));
@@ -74,20 +83,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!user) return null;
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 text-[#080e1e] font-sans selection:bg-[#cbb28d]/30 selection:text-[#080e1e] pb-12">
+        <BrandSurface branding={branding} className="min-h-screen w-full bg-slate-50 text-[#080e1e] font-sans selection:bg-[#cbb28d]/30 selection:text-[#080e1e] pb-12">
             {/* Top Floating Navbar (Luxury Off-White & Royal Navy) */}
             <header className="sticky top-0 z-40 w-full pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
                 <div className="bg-white rounded-full px-3 sm:px-5 py-2.5 shadow-[0_4px_25px_rgba(8,14,30,0.06)] border border-[#e4dec3]/80 flex items-center justify-between gap-2 sm:gap-4">
                     
                     {/* Left Brand Logo */}
                     <div className="flex min-w-0 items-center gap-3">
-                        <Link href="/dashboard" className="flex items-center group mix-blend-multiply">
-                            <img src="/logo.jpg" alt="Frigo Flow" className="h-10 sm:h-14 lg:h-[72px] w-auto max-w-[140px] sm:max-w-[200px] lg:max-w-none object-contain origin-left lg:scale-[1.3] lg:ml-2" />
+                        <Link href="/dashboard" aria-label="Dashboard home" className="flex min-w-0 max-w-full items-center group mix-blend-multiply">
+                            <NavbarBrand branding={branding} />
                         </Link>
                     </div>
 
                     {/* Center Floating Pill Menu */}
-                    <nav className="hidden xl:flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200">
+                    <nav aria-label="Dashboard navigation" className="hidden xl:flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200">
                         {filteredItems.map((item) => {
                             const active = isNavActive(item.url);
                             return (
@@ -108,7 +117,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </nav>
 
                     {/* Right User Actions & Avatar */}
-                    <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+                    <div className="flex shrink-0 items-center gap-1 sm:gap-3">
 
                         <LabReportNotifications />
 
@@ -117,21 +126,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             type="button"
                             aria-label="Settings"
                             onClick={() => router.push(user?.role === 'ADMIN' ? '/dashboard/settings' : '/dashboard/profile')}
-                            className="w-9 h-9 rounded-full bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 text-[#080e1e] flex items-center justify-center transition-colors border border-[#ded8c4]/50"
+                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 text-[#080e1e] flex items-center justify-center transition-colors border border-[#ded8c4]/50"
                         >
                             <Settings className="w-4 h-4" />
                         </button>
 
                         {/* User Dropdown Profile Pill */}
                         <DropdownMenu>
-                            <DropdownMenuTrigger className="flex items-center gap-2 bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 p-1 pr-3 rounded-full transition-colors outline-none border border-[#ded8c4]/50">
+                            <DropdownMenuTrigger aria-label="Account menu" className="flex items-center gap-2 bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 p-1 sm:pr-3 rounded-full transition-colors outline-none border border-[#ded8c4]/50">
                                 <div className="w-7 h-7 rounded-full bg-[#080e1e] text-[#cbb28d] font-bold text-xs flex items-center justify-center border border-[#cbb28d]/30">
                                     {user?.name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
                                 </div>
                                 <span className="text-xs font-bold text-[#080e1e] max-w-[100px] truncate hidden sm:inline-block">
                                     {user?.name?.split(' ')[0] || user?.email?.split('@')[0]}
                                 </span>
-                                <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                                <ChevronDown className="hidden sm:block w-3.5 h-3.5 text-slate-500" />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" sideOffset={16} className="z-[100] w-56 bg-white rounded-2xl p-2 shadow-xl border border-[#e4dec3] mt-3">
                                 <div className="p-2 border-b border-[#e6e0ce]">
@@ -153,7 +162,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
 
                 {/* Mobile Floating Menu Pills */}
-                <div className="flex xl:hidden items-center gap-1 bg-white p-1.5 rounded-2xl border border-[#e4dec3] mt-2 overflow-x-auto shadow-sm">
+                <nav aria-label="Dashboard navigation" className="flex flex-wrap xl:hidden items-center gap-1 bg-white p-1.5 rounded-2xl border border-[#e4dec3] mt-2 shadow-sm">
                     {filteredItems.map((item) => {
                         const active = isNavActive(item.url);
                         return (
@@ -171,7 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </Link>
                         );
                     })}
-                </div>
+                </nav>
             </header>
 
             {/* Main Content Area */}
@@ -179,6 +188,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {showSandboxNotice && <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Terra sandbox: session progress and lab results shown here are simulated, not clinical results.</p>}
                 {children}
             </main>
-        </div>
+        </BrandSurface>
     );
 }

@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { reportFilePath } from './report-file';
+import { brandingSelect, publicBranding } from '../branding/branding.service';
 import { randomInt } from 'crypto';
-import { existsSync } from 'fs';
-import { extname, join } from 'path';
+import { extname } from 'path';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,6 +16,14 @@ const ACCESS_EXPIRY_DAYS = 7;
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 
 type ReportType = 'pdf' | 'image' | 'structured' | 'unsupported' | 'none';
+type StoredReport = { kind: 'bytes'; data: Buffer; mimeType: string } | { kind: 'file'; filePath: string };
+
+function reportMime(url: string): string {
+    const extension = extname(url).toLowerCase();
+    const types: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+    if (!types[extension]) throw new BadRequestException('Choose a PDF or supported image report.');
+    return types[extension];
+}
 
 function classifyReport(fileUrl: string | null): ReportType {
     if (!fileUrl) return 'none';
@@ -47,9 +56,28 @@ function generateAccessCode(): string {
 export class LabResultsService {
     constructor(private prisma: PrismaService, private mailService: MailService) { }
 
+    async staffFile(filename: string, clinic_id: string | null) {
+        if (!/^[a-zA-Z0-9_-]+\.(pdf|png|jpe?g|gif|webp)$/i.test(filename)) throw new NotFoundException('Report file not available.');
+        const result = await this.prisma.labResult.findFirst({ where: {
+            file_url: `/uploads/lab-results/${filename}`,
+            ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}),
+        } });
+        if (!result) throw new NotFoundException('Report file not available.');
+        return this.storedReport(result.id, result.file_url);
+    }
+
+    private async storedReport(id: string, url: string): Promise<StoredReport> {
+        const stored = await this.prisma.labResultFile.findUnique({ where: { lab_result_id: id } });
+        if (stored) return { kind: 'bytes', data: Buffer.from(stored.data), mimeType: stored.mime_type };
+        // Legacy files are readable only while using their original local database.
+        const hostname = new URL(process.env.DATABASE_URL || '').hostname;
+        if (!['localhost', '127.0.0.1', '[::1]'].includes(hostname)) throw new NotFoundException('Report file not available.');
+        return { kind: 'file', filePath: reportFilePath(url) };
+    }
+
     async findAll(clinic_id: string | null, db: Prisma.TransactionClient = this.prisma) {
         const results = await db.labResult.findMany({
-            where: { ...displayedResultWhere(), ...(clinic_id ? { clinic_id } : {}) },
+            where: { ...displayedResultWhere(), ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) },
             include: {
                 patient: { select: { id: true, first_name: true, last_name: true, gender: true, dob: true, age: true } },
                 clinic: { select: { id: true, name: true, email: true } },
@@ -89,9 +117,9 @@ export class LabResultsService {
 
     async findOne(id: string, clinic_id: string | null) {
         const result = await this.prisma.labResult.findFirst({
-            where: { id, ...(clinic_id ? { clinic_id } : {}) },
+            where: { id, ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) },
             include: {
-                patient: true,
+                patient: { omit: { validic_marketplace_url: true } },
                 clinic: true,
                 user: { select: { name: true } },
                 workflow: { select: { id: true, test_type: true, status: true } },
@@ -111,6 +139,7 @@ export class LabResultsService {
         notes?: string;
         file_url: string;
         file_name?: string;
+        file_data?: Buffer;
         uploaded_by: string;
         caller_clinic_id: string | null;
     }) {
@@ -142,6 +171,7 @@ export class LabResultsService {
                 status: data.status || 'Available',
                 notes: data.notes,
                 uploaded_by: data.uploaded_by,
+                ...(data.file_data ? { stored_file: { create: { mime_type: reportMime(data.file_url), data: Uint8Array.from(data.file_data) } } } : {}),
             },
             include: {
                 patient: { select: { first_name: true, last_name: true } },
@@ -150,11 +180,15 @@ export class LabResultsService {
         });
     }
 
-    async updateStatus(id: string, status: string) {
-        return this.prisma.labResult.update({ where: { id }, data: { status } });
+    async updateStatus(id: string, status: string, clinic_id: string | null) {
+        if (!['Available', 'Sent to Clinic', 'Pending', 'Reviewed'].includes(status)) throw new BadRequestException('Choose a valid result status.');
+        await this.findOne(id, clinic_id);
+        return this.prisma.labResult.update({ where: { id, ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) }, data: { status } });
     }
 
     async sendToClinic(id: string, clinic_id: string, caller_clinic_id: string | null) {
+        const result = await this.findOne(id, caller_clinic_id);
+        if (result.patient.clinic_id !== clinic_id) throw new ForbiddenException('A result must remain with its patient\'s clinic.');
         // A clinic user may only send a result that already belongs to their
         // own clinic, and only to their own clinic — prevents a clinic user
         // from reassigning another clinic's result or rerouting their own
@@ -184,7 +218,7 @@ export class LabResultsService {
 
     async generateAccess(labResultId: string, clinic_id: string | null) {
         const labResult = await this.prisma.labResult.findFirst({
-            where: { id: labResultId, ...(clinic_id ? { clinic_id } : {}) },
+            where: { id: labResultId, ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) },
             include: { access: true },
         });
         if (!labResult) throw new NotFoundException('Lab result not found');
@@ -206,7 +240,7 @@ export class LabResultsService {
 
     async regenerateAccess(labResultId: string, clinic_id: string | null) {
         const labResult = await this.prisma.labResult.findFirst({
-            where: { id: labResultId, ...(clinic_id ? { clinic_id } : {}) },
+            where: { id: labResultId, ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) },
             include: { access: true },
         });
         if (!labResult) throw new NotFoundException('Lab result not found');
@@ -260,7 +294,7 @@ export class LabResultsService {
 
     async sendAccessToPatient(labResultId: string, clinic_id: string | null, accessCode: string) {
         const labResult = await this.prisma.labResult.findFirst({
-            where: { id: labResultId, ...(clinic_id ? { clinic_id } : {}) },
+            where: { id: labResultId, ...(clinic_id ? { clinic_id, patient: { clinic_id } } : {}) },
             include: { access: true, patient: true },
         });
         if (!labResult) throw new NotFoundException('Lab result not found');
@@ -290,7 +324,8 @@ export class LabResultsService {
         return { sent: true, patientEmail, emailConfigured: this.isEmailConfigured() };
     }
 
-    private async authorizeAccess(resultId: string, accessCode: string) {
+    private async authorizeAccess(resultId: string, accessCode: string, clinicId?: string) {
+        if (typeof resultId !== 'string' || typeof accessCode !== 'string' || resultId.length > 128 || !/^\d{6}$/.test(accessCode.trim())) throw new UnauthorizedException('Invalid Result ID or Access Code.');
         const normalizedResultId = (resultId || '').trim().toUpperCase();
         if (!normalizedResultId || !accessCode?.trim()) {
             throw new BadRequestException('Result ID and Access Code are required.');
@@ -301,7 +336,7 @@ export class LabResultsService {
             include: {
                 lab_result: {
                     include: {
-                        patient: { select: { first_name: true, last_name: true } },
+                        patient: { select: { first_name: true, last_name: true, clinic_id: true, clinic: { select: { ...brandingSelect, status: true } } } },
                         clinic: { select: { name: true } },
                     },
                 },
@@ -309,6 +344,12 @@ export class LabResultsService {
         });
 
         if (!access) {
+            throw new UnauthorizedException('Invalid Result ID or Access Code.');
+        }
+
+        if ((clinicId && access.lab_result.patient.clinic_id !== clinicId) ||
+            access.lab_result.patient.clinic.status === 'Inactive' ||
+            (access.lab_result.clinic_id && access.lab_result.clinic_id !== access.lab_result.patient.clinic_id)) {
             throw new UnauthorizedException('Invalid Result ID or Access Code.');
         }
 
@@ -324,8 +365,8 @@ export class LabResultsService {
         return access;
     }
 
-    async verifyPatientAccess(resultId: string, accessCode: string) {
-        const access = await this.authorizeAccess(resultId, accessCode);
+    async verifyPatientAccess(resultId: string, accessCode: string, clinicId?: string) {
+        const access = await this.authorizeAccess(resultId, accessCode, clinicId);
 
         await this.prisma.labResultAccess.update({
             where: { id: access.id },
@@ -340,7 +381,8 @@ export class LabResultsService {
             resultDate: lr.result_date,
             notes: lr.notes,
             uploadedAt: lr.uploaded_at,
-            clinicName: lr.clinic?.name ?? null,
+            clinicName: lr.patient.clinic.name,
+            branding: publicBranding(lr.patient.clinic),
             reportType: resolveReportType(lr),
         };
     }
@@ -348,8 +390,9 @@ export class LabResultsService {
     async getPatientReport(
         resultId: string,
         accessCode: string,
-    ): Promise<{ kind: 'file'; filePath: string; reportType: ReportType } | { kind: 'structured'; report: unknown }> {
-        const access = await this.authorizeAccess(resultId, accessCode);
+        clinicId?: string,
+    ): Promise<StoredReport | { kind: 'structured'; report: unknown }> {
+        const access = await this.authorizeAccess(resultId, accessCode, clinicId);
         const lr = access.lab_result;
         const reportType = resolveReportType(lr);
 
@@ -363,11 +406,6 @@ export class LabResultsService {
             throw new BadRequestException('This file format cannot be previewed in the portal.');
         }
 
-        const filePath = join(process.cwd(), lr.file_url as string);
-        if (!existsSync(filePath)) {
-            throw new NotFoundException('The report file could not be found.');
-        }
-
-        return { kind: 'file', filePath, reportType };
+        return this.storedReport(lr.id, lr.file_url);
     }
 }

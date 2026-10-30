@@ -7,6 +7,7 @@ import { useFormValidation } from '@/lib/use-form-validation';
 import { FieldError } from '@/components/ui/field-error';
 import { prepareEmailVerification } from '@/lib/email-verification';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,12 +26,12 @@ import axios from 'axios';
 
 const API = '/api/v1';
 
-const getRoleBadge = (role: string) => {
+const getRoleBadge = (role: string | undefined) => {
     if (role === 'ADMIN') return 'bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30 font-bold';
     return 'bg-emerald-950/20 text-emerald-900 border border-emerald-900/30';
 };
 
-const getRoleLabel = (role: string) => {
+const getRoleLabel = (role: string | undefined) => {
     if (role === 'ADMIN') return 'Frigo Admin';
     return 'Clinic Staff';
 };
@@ -135,6 +136,17 @@ export default function SettingsPage() {
                     {isAdmin ? '' : 'Manage physician profile details and security credentials.'}
                 </p>
             </div>
+
+            {(isAdmin || (user?.role === 'CLINIC_USER' && user?.is_clinic_admin)) && <div className="grid gap-4 sm:grid-cols-2">
+                <Link href="/dashboard/branding" className="rounded-2xl border border-[#e4dec3] bg-white p-5 hover:bg-slate-50">
+                    <h2 className="font-semibold">Clinic branding</h2>
+                    <p className="mt-1 text-sm text-slate-600">Edit the clinic name, logo, colors, information and services.</p>
+                </Link>
+                {isAdmin && <Link href="/dashboard/settings/users" className="rounded-2xl border border-[#e4dec3] bg-white p-5 hover:bg-slate-50">
+                    <h2 className="font-semibold">Branding permissions</h2>
+                    <p className="mt-1 text-sm text-slate-600">Choose which clinic staff can manage their own clinic branding.</p>
+                </Link>}
+            </div>}
 
             <Tabs defaultValue={isAdmin ? 'users' : 'profile'} className="w-full">
                 <TabsList className="bg-white/10 p-1 rounded-full border border-white/20 inline-flex shadow-xs">

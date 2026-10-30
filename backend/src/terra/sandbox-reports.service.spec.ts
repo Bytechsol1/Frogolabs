@@ -12,7 +12,7 @@ describe('automatic sandbox reports', () => {
         process.env.TERRA_SANDBOX_AUTO_REPORTS = 'true';
         process.env.TERRA_ENVIRONMENT = 'sandbox';
         process.env.TERRA_REQUIRE_LIVE_DATA = 'false';
-        job = { id: 'job', patient_id: 'patient', patient: { clinic_id: 'clinic' }, order_id: null,
+        job = { id: 'job', patient_id: 'patient', patient: { clinic_id: 'clinic' }, order_id: null, order: { patient_id: 'patient' },
             variant_id: '100091', test_name: 'Thyroid Function', country_code: 'US', attempts: 0,
             due_at: new Date(Date.now() + 300000) };
         db = { terraOrder: { findMany: jest.fn().mockResolvedValue([]) }, sandboxReportJob: { upsert: jest.fn(), findMany: jest.fn(async () => [{ ...job }]),
@@ -61,6 +61,14 @@ describe('automatic sandbox reports', () => {
         process.env.NODE_ENV = 'production';
         await service.runDueJobs();
         expect(db.sandboxReportJob.findMany).not.toHaveBeenCalled();
+        expect(terra.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('never advances an order belonging to a different patient', async () => {
+        job.order_id = 'other-order';
+        job.order.patient_id = 'other-patient';
+        await service.runDueJobs();
+        expect(terra.advanceSandboxOrder).not.toHaveBeenCalled();
         expect(terra.createOrder).not.toHaveBeenCalled();
     });
 

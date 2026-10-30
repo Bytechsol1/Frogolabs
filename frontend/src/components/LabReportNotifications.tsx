@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { Popover } from '@base-ui/react/popover';
 import { Bell } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useReportBadgePreference } from '@/lib/use-report-badge-preference';
 
 type ReportNotification = { id: string; patientId: string; patientName: string; testName: string; readyAt: string; isSandbox: boolean };
 
 export function LabReportNotifications() {
     const { user } = useAuth();
+    const [showUnreadBadge] = useReportBadgePreference(user?.id);
     const [open, setOpen] = useState(false);
     const [items, setItems] = useState<ReportNotification[]>([]);
     const [read, setRead] = useState<string[]>([]);
@@ -67,7 +69,7 @@ export function LabReportNotifications() {
         <Popover.Trigger aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} title="Notifications"
             className="relative w-9 h-9 shrink-0 rounded-full bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 text-[#080e1e] flex items-center justify-center border border-[#ded8c4]/50">
             <Bell className="w-4 h-4" aria-hidden="true" />
-            {unread > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-rose-600 px-1 text-[9px] font-bold leading-4 text-white">{unread > 99 ? '99+' : unread}</span>}
+            {showUnreadBadge && unread > 0 && <span data-unread-report-badge className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-rose-600 px-1 text-[9px] font-bold leading-4 text-white">{unread > 99 ? '99+' : unread}</span>}
         </Popover.Trigger>
         <span className="sr-only" role="status" aria-live="polite">{unread ? `${unread} unread lab report notifications` : ''}</span>
         <Popover.Portal>

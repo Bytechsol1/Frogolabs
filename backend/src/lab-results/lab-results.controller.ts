@@ -1,12 +1,13 @@
+import { clinicScope } from '../common/tenant';
 import {
     Controller, Get, Post, Patch, Param, Body, Query,
     UseGuards, Request, UseInterceptors, UploadedFile, Header, ForbiddenException,
-    ParseFilePipe, MaxFileSizeValidator, FileTypeValidator,
+    BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { memoryStorage } from 'multer';
+import { extname } from 'path';
+import { randomUUID as uuidv4 } from 'node:crypto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LabResultsService } from './lab-results.service';
 
@@ -17,32 +18,31 @@ export class LabResultsController {
 
     @Get()
     findAll(@Request() req) {
-        return this.labResultsService.findAll(req.user.clinic_id);
+        return this.labResultsService.findAll(clinicScope(req.user));
     }
 
     @Get('overview')
     @Header('Cache-Control', 'private, no-store')
     overview(@Request() req, @Query('clinic_id') clinicId?: string) {
-        if (req.user.role !== 'ADMIN' && !req.user.clinic_id) {
+        if (req.user.role !== 'ADMIN' && !clinicScope(req.user)) {
             throw new ForbiddenException('A clinic account is required.');
         }
-        return this.labResultsService.overview(req.user.role === 'ADMIN' ? clinicId || null : req.user.clinic_id);
+        return this.labResultsService.overview(req.user.role === 'ADMIN' ? clinicId || null : clinicScope(req.user));
     }
 
     @Get(':id')
     findOne(@Param('id') id: string, @Request() req) {
-        return this.labResultsService.findOne(id, req.user.clinic_id);
+        return this.labResultsService.findOne(id, clinicScope(req.user));
     }
 
     @Post()
     @UseInterceptors(FileInterceptor('file', {
-        storage: diskStorage({
-            destination: join(process.cwd(), 'uploads', 'lab-results'),
-            filename: (_req, file, cb) => {
-                cb(null, `${uuidv4()}${extname(file.originalname)}`);
-            },
-        }),
+        storage: memoryStorage(),
         limits: { fileSize: 25 * 1024 * 1024 },
+        fileFilter: (_request, file, callback) => {
+            if (!/\.(pdf|png|jpe?g|gif|webp)$/i.test(file.originalname)) return callback(new BadRequestException('Choose a PDF or supported image report.'), false);
+            callback(null, true);
+        },
     }))
     async create(
         @UploadedFile() file: Express.Multer.File,
@@ -50,7 +50,7 @@ export class LabResultsController {
         @Request() req,
     ) {
         const fileUrl = file
-            ? `/uploads/lab-results/${file.filename}`
+            ? `/uploads/lab-results/${uuidv4()}${extname(file.originalname).toLowerCase()}`
             : '';
 
         return this.labResultsService.create({
@@ -61,33 +61,34 @@ export class LabResultsController {
             notes: body.notes,
             file_url: fileUrl,
             file_name: file?.originalname,
+            file_data: file?.buffer,
             uploaded_by: req.user.id,
-            caller_clinic_id: req.user.clinic_id,
+            caller_clinic_id: clinicScope(req.user),
         });
     }
 
     @Patch(':id/status')
-    updateStatus(@Param('id') id: string, @Body() body: { status: string }) {
-        return this.labResultsService.updateStatus(id, body.status);
+    updateStatus(@Param('id') id: string, @Body() body: { status: string }, @Request() req) {
+        return this.labResultsService.updateStatus(id, body.status, clinicScope(req.user));
     }
 
     @Patch(':id/send')
     sendToClinic(@Param('id') id: string, @Body() body: { clinic_id: string }, @Request() req) {
-        return this.labResultsService.sendToClinic(id, body.clinic_id, req.user.clinic_id);
+        return this.labResultsService.sendToClinic(id, body.clinic_id, clinicScope(req.user));
     }
 
     @Post(':id/access')
     generateAccess(@Param('id') id: string, @Request() req) {
-        return this.labResultsService.generateAccess(id, req.user.clinic_id);
+        return this.labResultsService.generateAccess(id, clinicScope(req.user));
     }
 
     @Post(':id/access/regenerate')
     regenerateAccess(@Param('id') id: string, @Request() req) {
-        return this.labResultsService.regenerateAccess(id, req.user.clinic_id);
+        return this.labResultsService.regenerateAccess(id, clinicScope(req.user));
     }
 
     @Post(':id/access/send')
     sendAccessToPatient(@Param('id') id: string, @Body() body: { access_code: string }, @Request() req) {
-        return this.labResultsService.sendAccessToPatient(id, req.user.clinic_id, body.access_code);
+        return this.labResultsService.sendAccessToPatient(id, clinicScope(req.user), body.access_code);
     }
 }

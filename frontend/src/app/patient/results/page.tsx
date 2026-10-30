@@ -1,5 +1,8 @@
 'use client';
 
+import { BrandMark, BrandSurface, useBrandTitle } from '@/components/ClinicBrand';
+import { usePublicBranding } from '@/context/BrandingContext';
+
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
@@ -59,11 +62,14 @@ function isAbnormal(code: string | null | undefined) {
 }
 
 export default function AccessResultsPage() {
+    const { branding: publicBranding, clinicId, error: clinicError } = usePublicBranding();
     const [resultId, setResultId] = useState('');
     const [accessCode, setAccessCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [result, setResult] = useState<any>(null);
+    const branding = result?.branding || publicBranding;
+    useBrandTitle(branding);
     const [view, setView] = useState<'form' | 'summary' | 'report'>('form');
 
     // Report viewer state
@@ -107,6 +113,7 @@ export default function AccessResultsPage() {
             const res = await axios.post('/api/v1/patient-access/verify', {
                 result_id: normalizedResultId,
                 access_code: normalizedAccessCode,
+                ...(clinicId ? { clinic_id: clinicId } : {}),
             });
             credsRef.current = { resultId: normalizedResultId, accessCode: normalizedAccessCode };
             setResult(res.data);
@@ -136,12 +143,13 @@ export default function AccessResultsPage() {
                 const res = await axios.post('/api/v1/patient-access/report', {
                     result_id: credsRef.current.resultId,
                     access_code: credsRef.current.accessCode,
+                    ...(clinicId ? { clinic_id: clinicId } : {}),
                 });
                 setStructuredReport(res.data);
             } else {
                 const res = await axios.post(
                     '/api/v1/patient-access/report',
-                    { result_id: credsRef.current.resultId, access_code: credsRef.current.accessCode },
+                    { result_id: credsRef.current.resultId, access_code: credsRef.current.accessCode, ...(clinicId ? { clinic_id: clinicId } : {}) },
                     { responseType: 'blob' }
                 );
                 const contentType = res.headers['content-type'];
@@ -222,7 +230,7 @@ export default function AccessResultsPage() {
     };
 
     const backToSignIn = (
-        <Link href="/login" className="inline-flex min-h-9 items-center gap-2 rounded-lg text-xs font-semibold text-[#080e1e] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c7657]">
+        <Link href={branding ? `/login?clinic=${encodeURIComponent(branding.id)}` : "/login"} className="inline-flex min-h-9 items-center gap-2 rounded-lg text-xs font-semibold text-[#080e1e] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c7657]">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f7f3e8]">
                 <ArrowLeft className="h-3.5 w-3.5 text-[#8c7657]" aria-hidden="true" />
             </span>
@@ -231,13 +239,13 @@ export default function AccessResultsPage() {
     );
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 text-[#091124] flex items-center justify-center p-4 sm:p-6">
+        <BrandSurface branding={branding} className="min-h-screen w-full bg-slate-50 text-[#091124] flex items-center justify-center p-4 sm:p-6">
+            {clinicError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{clinicError}</p>}
             <div className={`w-full space-y-6 ${view === 'report' ? 'max-w-5xl' : 'max-w-md'}`}>
                 {/* Brand Header */}
                 <div className="text-center space-y-1">
                     <div className="flex items-center justify-center gap-2 mb-2">
-                        <div className="bg-[#080e1e] w-9 h-9 rounded-md flex items-center justify-center text-[#cbb28d] font-bold italic text-lg">F</div>
-                        <span className="text-2xl font-extrabold text-[#080e1e]">Frigo Flow</span>
+                        <BrandMark branding={branding} />
                     </div>
                     <p className="text-slate-500 text-sm">
                         {view === 'report' ? 'Your lab report' : view === 'summary' ? 'Your secure lab result' : 'Access your lab results securely'}
@@ -604,7 +612,7 @@ export default function AccessResultsPage() {
                 )}
                 {view !== 'form' && <div className="text-center">{backToSignIn}</div>}
             </div>
-        </div>
+        </BrandSurface>
     );
 }
 

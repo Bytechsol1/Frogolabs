@@ -8,11 +8,11 @@
   --color-background: #F8FAFC;
   --color-foreground: #020617;
 
-  --color-primary: #0F766E;
-  --color-primary-foreground: #ffffff;
+  --color-primary: var(--brand-primary, #0F766E);
+  --color-primary-foreground: var(--brand-on-primary, #ffffff);
 
-  --color-secondary: #14B8A6;
-  --color-secondary-foreground: #ffffff;
+  --color-secondary: var(--brand-secondary, #14B8A6);
+  --color-secondary-foreground: var(--brand-on-secondary, #ffffff);
 
   --color-accent: #22C55E;
   --color-accent-foreground: #ffffff;

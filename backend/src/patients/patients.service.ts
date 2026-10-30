@@ -22,6 +22,7 @@ export class PatientsService {
 
     async findOne(id: string, clinic_id: string | null): Promise<any> {
         const patient = await this.prisma.patient.findFirst({
+            omit: { validic_marketplace_url: true },
             where: { id, ...registeredPatientWhere, ...(clinic_id ? { clinic_id } : {}) },
             include: {
                 clinic: true,
@@ -85,16 +86,16 @@ export class PatientsService {
         });
 
         // Seamless background provisioning for Validic Platform
-        this.validicService.provisionUser(patient.id).catch((err) => {
-            console.error('Validic auto-provisioning background error:', err);
+        this.validicService.provisionUser(patient.id, clinic_id).catch((err) => {
+            console.warn('Device provisioning deferred for the new patient.');
         });
 
         return patient;
     }
 
-    async update(id: string, clinic_id: string | null, input: unknown): Promise<Patient> {
+    async update(id: string, clinic_id: string | null, input: unknown): Promise<Omit<Patient, 'validic_marketplace_url'>> {
         const data = parseRecord(patientUpdateSchema, input);
         await this.findOne(id, clinic_id);
-        return this.prisma.patient.update({ where: { id }, data });
+        return this.prisma.patient.update({ where: { id, ...(clinic_id ? { clinic_id } : {}) }, data, omit: { validic_marketplace_url: true } });
     }
 }

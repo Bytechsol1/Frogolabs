@@ -1,3 +1,4 @@
+import { clinicScope } from '../common/tenant';
 import { Controller, Get, Post, Patch, Body, UseGuards, Request, Param, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WorkflowsService } from './workflows.service';
@@ -9,17 +10,17 @@ export class WorkflowsController {
 
     @Get()
     async findAll(@Request() req) {
-        return this.workflowsService.findAll(req.user.clinic_id);
+        return this.workflowsService.findAll(clinicScope(req.user));
     }
 
     @Get(':id')
     async findOne(@Param('id') id: string, @Request() req) {
-        return this.workflowsService.findOne(id, req.user.clinic_id);
+        return this.workflowsService.findOne(id, clinicScope(req.user));
     }
 
     @Post()
     async create(@Body() data: any, @Request() req) {
-        return this.workflowsService.create(req.user.clinic_id, { ...data, updated_by: req.user.id });
+        return this.workflowsService.create(clinicScope(req.user)!, { ...data, updated_by: req.user.id });
     }
 
     @Patch(':id/status')
@@ -27,9 +28,9 @@ export class WorkflowsController {
         if (req.user.role !== 'ADMIN' && req.user.role !== 'CLINIC_USER') {
             throw new ForbiddenException('You cannot update session status.');
         }
-        if (req.user.role === 'CLINIC_USER' && !req.user.clinic_id) {
+        if (req.user.role === 'CLINIC_USER' && !clinicScope(req.user)) {
             throw new ForbiddenException('A clinic membership is required to update session status.');
         }
-        return this.workflowsService.updateStatus(id, req.user.clinic_id, { ...data, updated_by: req.user.id });
+        return this.workflowsService.updateStatus(id, clinicScope(req.user), { ...data, updated_by: req.user.id });
     }
 }

@@ -37,6 +37,7 @@ export function AddPatientDialog({ onPatientAdded }: { onPatientAdded: () => voi
         e.preventDefault();
         if (loading) return;
         setError('');
+        if (!user?.token) { setError('Please sign in again before adding a patient.'); return; }
         if (!validation.check()) return;
         setLoading(true);
         try {

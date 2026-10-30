@@ -1,3 +1,4 @@
+import { readJwtSecret } from './jwt.config';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -18,7 +19,7 @@ import { AuthRateLimitGuard } from './auth-rate-limit.guard';
     MailModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secretKey',
+      secret: readJwtSecret(),
       signOptions: { expiresIn: '1h' },
     }),
   ],

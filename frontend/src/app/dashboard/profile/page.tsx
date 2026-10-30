@@ -10,14 +10,17 @@ import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Shield, Pencil, Check, X, Loader2 } from "lucide-react";
+import { User, Mail, Shield, Pencil, Check, X, Loader2, Bell, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { prepareEmailVerification } from '@/lib/email-verification';
+import { useReportBadgePreference } from '@/lib/use-report-badge-preference';
 
 export default function ProfilePage() {
-    const { user, login } = useAuth();
+    const { user, login, logout } = useAuth();
+    const [showReportBadge, setShowReportBadge] = useReportBadgePreference(user?.id);
+    const [preferenceFeedback, setPreferenceFeedback] = useState<{ message: string; error: boolean } | null>(null);
     const router = useRouter();
     const [editing, setEditing] = useState(false);
     const [name, setName] = useState(user?.name || '');
@@ -77,6 +80,7 @@ export default function ProfilePage() {
         <div className="space-y-7 pb-8 text-[#080e1e]">
             <header>
                 <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Account Settings</h1>
+                <p className="mt-2 text-sm text-slate-600">Manage your personal profile, notification preferences and browser session.</p>
             </header>
 
             <div className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]">
@@ -169,6 +173,28 @@ export default function ProfilePage() {
                     <div id="email-note" className="flex items-start gap-3 border-t border-[#e6e0ce] bg-[#faf9f6] px-6 py-4 sm:px-8">
                         <p className="text-xs leading-relaxed text-slate-500">Changing your email? We’ll send a verification code to your new address to confirm it.</p>
                     </div>
+                </section>
+            </div>
+
+            <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+                <section aria-labelledby="notification-preferences" className="min-w-0 rounded-[28px] border border-[#e4dec3] bg-white p-6 sm:p-8">
+                    <h2 id="notification-preferences" className="flex items-center gap-2 text-lg font-bold"><Bell className="h-5 w-5" aria-hidden="true" /> Report notifications</h2>
+                    <label htmlFor="show-report-badge" className="mt-5 flex cursor-pointer items-start gap-3">
+                        <input id="show-report-badge" type="checkbox" checked={showReportBadge} onChange={event => {
+                            const saved = setShowReportBadge(event.target.checked);
+                            setPreferenceFeedback({ message: saved ? 'Notification preference saved on this browser.' : 'Your browser could not save this preference. Please try again.', error: !saved });
+                        }} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
+                        <span><span className="block text-sm font-semibold">Show unread report badge</span><span className="mt-1 block text-xs leading-relaxed text-slate-500">Show the unread report count on the notification bell. Your reports remain available when the badge is hidden.</span></span>
+                    </label>
+                    <p className="mt-4 text-xs text-slate-500">Saved separately for your account on this browser.</p>
+                    {preferenceFeedback && <p role={preferenceFeedback.error ? 'alert' : 'status'} className={`mt-4 rounded-xl p-3 text-sm ${preferenceFeedback.error ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>{preferenceFeedback.message}</p>}
+                </section>
+                <section aria-labelledby="browser-session" className="min-w-0 rounded-[28px] border border-[#e4dec3] bg-white p-6 sm:p-8">
+                    <h2 id="browser-session" className="flex items-center gap-2 text-lg font-bold"><Shield className="h-5 w-5" aria-hidden="true" /> Browser session</h2>
+                    <p className="mt-5 text-sm font-semibold">Signed in as {user?.name || 'your account'}</p>
+                    {user?.clinic_name && <p className="mt-2 text-sm text-slate-600">Clinic: {user.clinic_name}</p>}
+                    <p className="mt-3 text-xs leading-relaxed text-slate-500">Sign out of the staff dashboard on this browser when you have finished using it.</p>
+                    <Button type="button" variant="outline" className="mt-5 gap-2 rounded-full" onClick={() => logout('/login')}><LogOut className="h-4 w-4" aria-hidden="true" />Sign out this browser</Button>
                 </section>
             </div>
         </div>

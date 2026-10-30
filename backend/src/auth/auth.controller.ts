@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, UseGuards, Request, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Patch, UseGuards, Request, Body, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
@@ -14,6 +14,7 @@ export class AuthController {
     @UseGuards(AuthRateLimitGuard, LocalAuthGuard)
     @Post('login')
     async login(@Request() req) {
+        if (req.body?.clinic_id && req.body.clinic_id !== req.user.clinic_id) throw new ForbiddenException('Please use the sign-in link for your assigned clinic.');
         return this.authService.login(req.user);
     }
 

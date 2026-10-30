@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 
 interface Biomarker {
     name: string;
@@ -28,6 +29,8 @@ export interface LabReport {
 }
 
 function FilePreview({ fileUrl, title }: { fileUrl: string; title: string }) {
+    const { user } = useAuth();
+    const token = user?.token;
     const [preview, setPreview] = useState<{ url: string; type: 'pdf' | 'image' } | null>(null);
     const [error, setError] = useState('');
     const [attempt, setAttempt] = useState(0);
@@ -39,6 +42,7 @@ function FilePreview({ fileUrl, title }: { fileUrl: string; title: string }) {
         async function load() {
             try {
                 const path = new URL(fileUrl, window.location.origin).pathname;
+                if (!path.startsWith('/uploads/lab-results/') || new URL(fileUrl, window.location.origin).origin !== window.location.origin) throw new Error('Invalid report location.');
                 const extension = path.split('.').pop()?.toLowerCase();
                 const imageTypes: Record<string, string> = {
                     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
@@ -52,6 +56,7 @@ function FilePreview({ fileUrl, title }: { fileUrl: string; title: string }) {
 
                 const response = await axios.get<Blob>(fileUrl, {
                     responseType: 'blob', signal: controller.signal,
+                    headers: { Authorization: `Bearer ${token}` },
                 });
                 if (controller.signal.aborted) return;
                 // A missing upload may be answered by an HTML fallback page.
@@ -72,7 +77,7 @@ function FilePreview({ fileUrl, title }: { fileUrl: string; title: string }) {
             controller.abort();
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
-    }, [fileUrl, attempt]);
+    }, [fileUrl, attempt, token]);
 
     if (error) return (
         <div role="alert" className="space-y-3 rounded-2xl border border-[#e6e0ce] p-6 text-center">

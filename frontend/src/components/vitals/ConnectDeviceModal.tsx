@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Activity, ExternalLink, RefreshCw, CheckCircle2, ShieldCheck, Smartphone, Watch, HeartPulse, Scale } from 'lucide-react';
+import { Activity, ExternalLink, RefreshCw, CheckCircle2, AlertCircle, ShieldCheck, Smartphone, Watch, HeartPulse, Scale } from 'lucide-react';
 import axios from 'axios';
 
 interface ConnectDeviceModalProps {
@@ -15,14 +15,11 @@ interface ConnectDeviceModalProps {
 export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
     patientId,
     patientName,
-    marketplaceUrl: initialMarketplaceUrl,
-    validicUserId,
     onMetricsRefreshed,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [seeding, setSeeding] = useState(false);
-    const [marketplaceUrl, setMarketplaceUrl] = useState<string | null>(initialMarketplaceUrl || null);
     const [message, setMessage] = useState<string | null>(null);
 
     const fetchConnectUrl = async () => {
@@ -33,12 +30,9 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
             const res = await axios.get(`/api/v1/validic/connect-url/${patientId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (res.data?.marketplace_url) {
-                setMarketplaceUrl(res.data.marketplace_url);
-            }
-        } catch (err: any) {
-            console.error('Failed to get connect URL', err);
-            setMessage('Could not load Validic portal URL.');
+            if (!res.data?.marketplace_url) throw new Error('Device connection is unavailable.');
+        } catch {
+            setMessage('This device connection is unavailable. Ask your clinic administrator to verify the patient mapping.');
         } finally {
             setLoading(false);
         }
@@ -46,9 +40,7 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
 
     const handleOpenModal = () => {
         setIsOpen(true);
-        if (!marketplaceUrl) {
-            fetchConnectUrl();
-        }
+        void fetchConnectUrl();
     };
 
     const handleOpenPortal = async () => {
@@ -60,14 +52,14 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
             });
             const realUrl = res.data?.marketplace_url;
             if (realUrl) {
-                setMarketplaceUrl(realUrl);
-                window.open(realUrl, '_blank', 'width=800,height=700,scrollbars=yes');
+                const url = new URL(realUrl);
+                if (url.protocol !== 'https:') throw new Error('Invalid device portal URL.');
+                window.open(url.toString(), '_blank', 'noopener,noreferrer,width=800,height=700,scrollbars=yes');
             } else {
-                window.open(marketplaceUrl || 'https://syncmydevice.com', '_blank', 'width=800,height=700,scrollbars=yes');
+                setMessage('A verified device connection is not available for this patient.');
             }
-        } catch (err) {
-            console.error('Failed to launch Validic portal', err);
-            window.open(marketplaceUrl || 'https://syncmydevice.com', '_blank', 'width=800,height=700,scrollbars=yes');
+        } catch {
+            setMessage('This device connection is unavailable. Ask your clinic administrator to verify the patient mapping.');
         } finally {
             setLoading(false);
         }
@@ -83,8 +75,7 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
             });
             setMessage('Sample vitals generated successfully!');
             if (onMetricsRefreshed) onMetricsRefreshed();
-        } catch (err: any) {
-            console.error('Failed to seed demo metrics', err);
+        } catch {
             setMessage('Failed to generate sample vitals.');
         } finally {
             setSeeding(false);
@@ -95,7 +86,7 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
         <>
             <button
                 onClick={handleOpenModal}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-lg hover:bg-primary/90 transition shadow-sm"
             >
                 <Activity className="w-4 h-4" />
                 Connect Health Devices
@@ -106,7 +97,7 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
                     <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 transition-all animate-in fade-in zoom-in-95">
                         <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/50 text-primary dark:text-indigo-400 rounded-xl">
                                     <Activity className="w-6 h-6" />
                                 </div>
                                 <div>
@@ -128,12 +119,12 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
 
                         <div className="py-5 space-y-4">
                             <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 text-sm text-slate-600 dark:text-slate-300 space-y-2">
-                                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-medium">
+                                <div className="flex items-center gap-2 text-primary dark:text-indigo-400 font-medium">
                                     <ShieldCheck className="w-4 h-4" />
-                                    HIPAA-Compliant Validic Aggregator
+                                    Patient device connections
                                 </div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    Automatically provisioned for Frigo Flow. Connect blood pressure monitors, smart scales, continuous glucose monitors (CGM), wearables, and sleep trackers.
+                                    Connect compatible health devices through the provider configured by your clinic.
                                 </p>
                             </div>
 
@@ -164,8 +155,8 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
 
                             {/* Status Message */}
                             {message && (
-                                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs rounded-lg flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                <div role={message === 'Sample vitals generated successfully!' ? 'status' : 'alert'} className={`p-3 text-xs rounded-lg flex items-center gap-2 ${message === 'Sample vitals generated successfully!' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
+                                    {message === 'Sample vitals generated successfully!' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
                                     {message}
                                 </div>
                             )}
@@ -191,7 +182,7 @@ export const ConnectDeviceModal: React.FC<ConnectDeviceModalProps> = ({
                                 <button
                                     onClick={handleOpenPortal}
                                     disabled={loading}
-                                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center gap-2 shadow-sm transition"
+                                    className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg flex items-center justify-center gap-2 shadow-sm transition"
                                 >
                                     Launch Validic Portal
                                     <ExternalLink className="w-4 h-4" />

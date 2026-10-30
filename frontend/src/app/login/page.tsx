@@ -1,5 +1,8 @@
 'use client';
 
+import { BrandMark, BrandSurface, useBrandTitle } from '@/components/ClinicBrand';
+import { usePublicBranding } from '@/context/BrandingContext';
+
 import { EmailInput } from '@/components/ui/email-input';
 import { normalizeEmail } from '@/lib/email-validation';
 import { useEmailValidation } from '@/lib/use-email-validation';
@@ -24,6 +27,9 @@ import {
 } from 'lucide-react';
 
 export default function LoginPage() {
+    const { branding: publicBranding, clinicId, error: clinicError } = usePublicBranding();
+    const branding = publicBranding;
+    useBrandTitle(branding);
     const [email, setEmail] = useState('');
     const emailValidation = useEmailValidation(email, true, 'login');
     const [password, setPassword] = useState('');
@@ -51,7 +57,7 @@ export default function LoginPage() {
         if (!emailValidation.check()) return;
         setLoading(true);
         try {
-            const response = await axios.post('/api/v1/auth/login', { email: normalizeEmail(email), password });
+            const response = await axios.post('/api/v1/auth/login', { email: normalizeEmail(email), password, ...(clinicId ? { clinic_id: clinicId } : {}) });
             await login(response.data.access_token);
             router.push('/dashboard');
         } catch (err: any) {
@@ -74,7 +80,8 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 text-[#091124] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans selection:bg-[#091124] selection:text-[#e5d8bf] relative overflow-hidden">
+        <BrandSurface branding={branding} className="min-h-screen w-full bg-slate-50 text-[#091124] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans selection:bg-[#091124] selection:text-[#e5d8bf] relative overflow-hidden">
+            {clinicError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{clinicError}</p>}
             
             {/* LUXURY "GATE OPENING" VAULT DOORS ANIMATION OVERLAY */}
             <div className="fixed inset-0 z-50 pointer-events-none flex">
@@ -84,7 +91,7 @@ export default function LoginPage() {
                         }`}
                 >
                     <div className="text-right opacity-80">
-                        <div className="text-xl sm:text-2xl font-sans tracking-widest font-extrabold uppercase">FRIGOFLOW</div>
+                        <div className="text-xl sm:text-2xl font-sans tracking-widest font-extrabold uppercase">{branding?.name || 'FRIGOFLOW'}</div>
                     </div>
                 </div>
 
@@ -127,7 +134,7 @@ export default function LoginPage() {
 
                     {/* Logo with Multiply Blend */}
                     <div className="relative z-10 flex justify-center mb-4 mix-blend-multiply">
-                        <img src="/logo.jpg" alt="Frigo Flow" className="h-28 w-auto scale-125" />
+                        <BrandMark branding={branding} />
                     </div>
 
                     {/* Brand Emblem Header */}
@@ -187,7 +194,7 @@ export default function LoginPage() {
                             {/* Email */}
                             {verificationEmail && <Button type="button" variant="outline" className="w-full rounded-xl" onClick={() => {
                                 prepareEmailVerification(verificationEmail);
-                                router.push('/verify-email');
+                                router.push(`/verify-email${clinicId ? `?clinic=${encodeURIComponent(clinicId)}` : ''}`);
                             }}>Verify Email</Button>}
                             <div className="space-y-1.5">
                                 <Label htmlFor="email" className="text-[10px] font-mono uppercase tracking-wider text-[#080e1e] font-bold">
@@ -269,7 +276,7 @@ export default function LoginPage() {
                             </p>
                             <p className="text-xs text-slate-500">
                                 Patient?{' '}
-                                <a href="/patient/results" className="text-[#080e1e] font-bold hover:underline">
+                                <a href={clinicId ? `/patient/results?clinic=${encodeURIComponent(clinicId)}` : "/patient/results"} className="text-[#080e1e] font-bold hover:underline">
                                     Access your lab results
                                 </a>
                             </p>
@@ -278,6 +285,6 @@ export default function LoginPage() {
                 </div>
 
             </div>
-        </div>
+        </BrandSurface>
     );
 }

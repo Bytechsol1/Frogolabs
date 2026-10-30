@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BrandingModule } from './branding/branding.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -17,6 +18,7 @@ import { TerraModule } from './terra/terra.module';
 
 @Module({
   imports: [
+    BrandingModule,
     PrismaModule,
     AuthModule,
     UsersModule,
