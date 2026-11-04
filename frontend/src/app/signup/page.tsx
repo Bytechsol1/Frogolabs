@@ -221,7 +221,7 @@ export default function SignupPage() {
                                 </div>
                             )}
                             <Button type="submit" className="mt-2 h-11 w-full gap-2 rounded-full bg-[#080e1e] text-sm font-bold text-white hover:bg-[#080e1e] focus-visible:ring-[#cbb28d]/50" disabled={isLoading}>
-                                {isLoading ? <><Loader2 className="h-4 w-4 animate-spin text-[#cbb28d]" aria-hidden="true" />Sending code...</> : <>Sign Up<ArrowRight className="h-4 w-4 text-[#cbb28d]" aria-hidden="true" /></>}
+                                Sign Up{isLoading ? <Loader2 className="h-4 w-4 animate-spin text-[#cbb28d]" aria-hidden="true" /> : <ArrowRight className="h-4 w-4 text-[#cbb28d]" aria-hidden="true" />}
                             </Button>
                             <p className="pt-1 text-center text-xs leading-relaxed text-slate-500">We will send a verification code to your email.</p>
                             <p className="border-t border-[#e6e0ce] pt-3 text-center text-xs text-slate-500">
