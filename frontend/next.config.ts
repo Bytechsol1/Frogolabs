@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    '/api/internal/mail': ['./public/logo.jpg'],
+  },
   allowedDevOrigins: (process.env.DEV_ALLOWED_ORIGINS ?? '')
     .split(',').map(origin => origin.trim()).filter(Boolean),
   experimental: {

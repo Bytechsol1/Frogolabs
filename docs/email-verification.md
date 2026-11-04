@@ -4,6 +4,8 @@ The application uses NestJS/Prisma password and JWT authentication, not Supabase
 
 Mail uses the existing SMTP provider. Credentials stay on the server and never reach browser code. Direct SMTP remains available locally and on hosting that permits outbound SMTP.
 
+Verification and resend emails use `backend/src/mail/verification-email.ts`: the Frigo Flow logo, gold/cream card, six separated code digits, ten-minute expiry and security footer. The plain-text alternative retains the complete code. Both direct SMTP and the Vercel mail function attach the unchanged `frontend/public/logo.jpg` as an inline CID image, so the HTML does not depend on downloading a remote logo. The mail endpoint only attaches this fixed asset and never accepts attachment paths from a request. Next.js explicitly includes the asset in the function trace. Deploy both backend and frontend updates for the new embedded-logo template; no new environment variables are needed. A backend-only package must retain the existing logo at its monorepo path.
+
 ## Direct SMTP configuration
 
 Configure these private variables in `backend/.env` or the backend hosting environment. Gmail is one example; retain your existing provider's host, port and credentials when using another SMTP service:

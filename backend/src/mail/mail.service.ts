@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@
 import * as nodemailer from 'nodemailer';
 import { readMailConfig } from './mail.config';
 import { requireMailboxEmail } from '../common/email-validation';
+import { join } from 'node:path';
+import { verificationEmail } from './verification-email';
 
 @Injectable()
 export class MailService implements OnModuleInit {
@@ -50,7 +52,11 @@ export class MailService implements OnModuleInit {
             return;
         }
         if (!this.transporter) throw new Error('Email transport is unavailable.');
-        const info = await this.transporter.sendMail({ from: config.from, to: email, ...message });
+        const attachments = message.html.includes('cid:frigo-flow-logo') ? [{
+            filename: 'frigo-flow-logo.jpg', path: join(__dirname, '../../../frontend/public/logo.jpg'),
+            cid: 'frigo-flow-logo', contentType: 'image/jpeg', contentDisposition: 'inline' as const,
+        }] : undefined;
+        const info = await this.transporter.sendMail({ from: config.from, to: email, ...message, attachments });
         if (!info.accepted?.some(address => typeof address === 'string' && address.toLowerCase() === email.toLowerCase())) {
             throw new Error('Recipient was not accepted by the email server.');
         }
@@ -63,24 +69,7 @@ export class MailService implements OnModuleInit {
         }
 
         try {
-            await this.sendMessage(email, {
-                subject: 'Your Frigo Flow Verification Code',
-                text: `Frigo Flow\n\nVerify your email\n\nYour verification code is: ${otp}\n\nThis code expires in 10 minutes.\nIf you did not request this code, you can ignore this email.\n\nFrigo Flow`,
-                html: `
-                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 32px;">
-                            <div style="background: #0f766e; width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: bold; font-style: italic; font-size: 18px; text-align: center; line-height: 36px;">F</div>
-                            <span style="font-size: 20px; font-weight: 800; color: #0f766e;">Frigo Flow</span>
-                        </div>
-                        <h2 style="color: #111; font-size: 22px; margin: 0 0 8px;">Verify your email address</h2>
-                        <p style="color: #555; font-size: 15px; margin: 0 0 24px;">Use the code below to complete your email verification.</p>
-                        <div style="background: #f4f4f5; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-                            <span style="font-size: 42px; font-weight: 900; letter-spacing: 12px; color: #0f766e; font-family: monospace;">${otp}</span>
-                        </div>
-                        <p style="color: #888; font-size: 13px; margin: 0;">This code expires in <strong>10 minutes</strong>. If you didn't request this, ignore this email.</p>
-                    </div>
-                `,
-            });
+            await this.sendMessage(email, verificationEmail(otp));
             this.logger.log('Registration email accepted by the mail server.');
         } catch {
             this.logger.error('Registration email could not be sent. Check email provider configuration and availability.');

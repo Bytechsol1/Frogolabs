@@ -45,11 +45,21 @@ test('rejects unauthenticated and browser-originated requests before contacting 
 });
 test('rejects malformed messages, recipient/header injection, and sender overrides', async () => {
     const f = fixture();
-    for (const body of ['bad json', [], null, { ...message, to: 'clinic@example.com\r\nBcc: other@example.com' }, { ...message, subject: 'Subject\r\nBcc: other@example.com' }, { ...message, from: 'other@example.com' }, { ...message, bcc: 'other@example.com' }, { ...message, html: '' }]) {
+    for (const body of ['bad json', [], null, { ...message, to: 'clinic@example.com\r\nBcc: other@example.com' }, { ...message, subject: 'Subject\r\nBcc: other@example.com' }, { ...message, from: 'other@example.com' }, { ...message, bcc: 'other@example.com' }, { ...message, html: '' }, { ...message, attachments: [{ path: 'private-file' }] }]) {
         assert.equal((await f.handler(request(body))).status, 400);
     }
     assert.equal((await f.handler(request(message, { 'content-type': 'text/plain' }))).status, 415);
     assert.equal(f.created(), 0);
+});
+test('embeds only the fixed application logo when the template references its CID', async () => {
+    const f = fixture();
+    assert.equal((await f.handler(request({ ...message, html: '<img src="cid:frigo-flow-logo" alt="Frigo Flow">' }))).status, 200);
+    const [logo] = f.sent[0].attachments;
+    assert.equal(logo.cid, 'frigo-flow-logo');
+    assert.equal(logo.contentType, 'image/jpeg');
+    assert.equal(logo.contentDisposition, 'inline');
+    assert.equal(logo.path, path.join(process.cwd(), 'public', 'logo.jpg'));
+    assert.ok(fs.existsSync(logo.path));
 });
 test('bounds message size even without a Content-Length header', async () => {
     const f = fixture();

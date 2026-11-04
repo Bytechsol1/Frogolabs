@@ -69,6 +69,25 @@ describe('Clinic verification email delivery', () => {
         await service.sendOtp(' John.Doe+Test@Example.CO.UK ', '123456', 'Contact');
         expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ to: 'john.doe+test@example.co.uk' }));
     });
+
+    it('embeds the existing Frigo Flow logo in a real email message without sending mail', async () => {
+        sendMail.mockResolvedValue({ accepted: ['clinic@example.com'] });
+        await service.sendOtp('clinic@example.com', '248619', 'Synthetic Contact');
+        const message = sendMail.mock.calls[0][0];
+        expect(message.html).toContain('A quick check.');
+        expect(message.html).toContain('cid:frigo-flow-logo');
+        expect(message.text).toContain('248619');
+        expect(message.html.length).toBeLessThan(40000);
+        const actual: typeof nodemailer = jest.requireActual('nodemailer');
+        const transport = actual.createTransport({ streamTransport: true, buffer: true });
+        const composed = await transport.sendMail(message);
+        const mime = composed.message.toString();
+        expect(mime).toContain('Content-ID: <frigo-flow-logo>');
+        expect(mime).toMatch(/Content-Type: image\/jpeg/i);
+        expect(mime).toMatch(/Content-Disposition: inline/i);
+        expect(mime).toContain('multipart/related');
+        transport.close();
+    });
 });
 
 describe('HTTPS verification email delivery', () => {

@@ -2,6 +2,7 @@ import 'server-only';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import * as nodemailer from 'nodemailer';
 import { mailboxEmailSchema } from '@frigo-flow/validation';
+import { join } from 'node:path';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const reply = (status: number, body: object) => Response.json(body, {
@@ -64,6 +65,11 @@ export function createSmtpDeliveryHandler(
             const accepted = await transport.sendMail({
                 from: { name: env.SMTP_FROM_NAME, address: sender.data }, to: recipient.data,
                 subject: message.subject, html: message.html, text: message.text as string | undefined,
+                // Only this fixed application asset may be attached; request-supplied paths are never accepted.
+                ...(message.html.includes('cid:frigo-flow-logo') ? { attachments: [{
+                    filename: 'frigo-flow-logo.jpg', path: join(process.cwd(), 'public', 'logo.jpg'),
+                    cid: 'frigo-flow-logo', contentType: 'image/jpeg', contentDisposition: 'inline' as const,
+                }] } : {}),
             });
             if (!accepted.accepted?.some(address => typeof address === 'string' && address.toLowerCase() === recipient.data.toLowerCase())) throw new Error('Recipient rejected');
             return reply(200, { accepted: true });
