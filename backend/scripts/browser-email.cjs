@@ -48,8 +48,13 @@ async function until(check, label, timeout = 45000) {
         const tabs = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
         socket = new WebSocket(tabs.find(tab => tab.type === 'page').webSocketDebuggerUrl);
         await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
-        let sequence = 0, registration = 'failed', verify = 'wrong', resend = 'ok', profileUnavailable = false, profileDenied = false, accountVerified = false;
-        const fixtureProfile = () => ({ id: 'fixture-user', email: 'ui@example.com', name: 'UI Fixture', role: 'CLINIC_USER', email_verified: accountVerified, clinic_id: 'fixture-clinic', clinic_name: 'Fixture Clinic', is_clinic_admin: true });
+        let sequence = 0, registration = 'failed', verify = 'wrong', resend = 'ok', profileUnavailable = false, profileDenied = false, accountVerified = false, adminMode = false;
+        const fixtureProfile = () => ({ id: 'fixture-user', email: 'ui@example.com', name: 'UI Fixture', role: adminMode ? 'ADMIN' : 'CLINIC_USER', email_verified: accountVerified, clinic_id: adminMode ? null : 'fixture-clinic', clinic_name: adminMode ? null : 'Fixture Clinic', is_clinic_admin: !adminMode });
+        const originalClinics = [
+            { id: 'delete-fixture-a', name: 'Delete Fixture A', contact_name: 'Synthetic Contact', email: 'a@example.com', phone: null, status: 'Active', _count: { patients: 1, workflows: 1 } },
+            { id: 'delete-fixture-b', name: 'Delete Fixture B', contact_name: 'Synthetic Contact', email: 'b@example.com', phone: null, status: 'Inactive', _count: { patients: 0, workflows: 0 } },
+        ];
+        let clinics = [...originalClinics], failDeletion = false, staleClinicList = false, deleteCalls = 0, clinicReads = 0;
         const pending = new Map();
         const send = (method, params = {}) => new Promise((resolve, reject) => {
             const id = ++sequence;
@@ -90,6 +95,15 @@ async function until(check, label, timeout = 45000) {
                     }
                     else if (pathname.includes('/branding/')) body = { id: 'fixture-clinic', name: 'Fixture Clinic', services: [], logo_url: null, primary_color: '#0F766E', secondary_color: '#14B8A6' };
                     else if (pathname.endsWith('/dashboard/clinic/stats')) body = { kpi: {}, tables: { recentPatients: [] } };
+                    else if (pathname === '/api/v1/clinics' && request.method === 'GET') { clinicReads++; body = staleClinicList ? originalClinics : clinics; }
+                    else if (pathname.startsWith('/api/v1/clinics/') && request.method === 'DELETE') {
+                        deleteCalls++; await sleep(150);
+                        const selected = clinics.find(clinic => pathname.endsWith(`/${clinic.id}`));
+                        if (!adminMode) { status = 403; body = { message: 'Administrator access required.' }; }
+                        else if (failDeletion) { status = 503; body = { message: 'Synthetic outage' }; }
+                        else if (!selected || JSON.parse(request.postData || '{}').confirmationName !== selected.name) { status = 400; body = { message: 'Confirmation required.' }; }
+                        else { clinics = clinics.filter(clinic => clinic.id !== selected.id); body = { id: selected.id, deleted: true }; }
+                    }
                     else if (request.method !== 'GET') { status = 400; body = { message: 'Unexpected mutation blocked by browser test.' }; }
                     await send('Fetch.fulfillRequest', { requestId, responseCode: status, responseHeaders: [{ name: 'content-type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
                 })().catch(() => {});
@@ -188,6 +202,51 @@ async function until(check, label, timeout = 45000) {
         await wait("location.pathname==='/login' && document.querySelector('#email')");
         assert.equal(await evaluate("localStorage.getItem('access_token')"), null);
         console.log('PASS server-revoked sessions remain restricted after automatic verification sign-in');
+        profileDenied = false; adminMode = true;
+        await evaluate("localStorage.setItem('access_token','synthetic-browser-session')");
+        await send('Page.navigate', { url: `${origin}/dashboard/clinics` });
+        await wait("document.querySelector('[aria-label=\"Actions for Delete Fixture A\"]')");
+        const clinicMenu = async name => {
+            await evaluate(`document.querySelector(${JSON.stringify(`[aria-label="Actions for ${name}"]`)}).click()`);
+            await wait("document.querySelector('[role=menuitem]')");
+        };
+        const deleteItem = () => evaluate("[...document.querySelectorAll('[role=menuitem]')].find(e=>e.textContent.trim()==='Delete Clinic').click()");
+        await clinicMenu('Delete Fixture A');
+        assert.equal(await evaluate("document.body.innerText.includes('View Patients') && document.body.innerText.includes('Disable Clinic') && document.body.innerText.includes('Delete Clinic')"), true);
+        await deleteItem();
+        await wait("document.querySelector('#delete-clinic-confirmation')");
+        await input('#delete-clinic-confirmation', 'Wrong clinic');
+        assert.equal(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Delete Clinic Permanently').disabled"), true);
+        await click('Cancel');
+        assert.equal(deleteCalls, 0);
+        await clinicMenu('Delete Fixture A'); await deleteItem();
+        await wait("document.querySelector('#delete-clinic-confirmation')");
+        await input('#delete-clinic-confirmation', 'Delete Fixture A');
+        failDeletion = true;
+        const confirmTwice = () => evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Delete Clinic Permanently');button.click();button.click();})()");
+        await confirmTwice();
+        await wait("document.querySelector('[role=alert]')?.textContent.includes('could not be deleted')");
+        assert.equal(deleteCalls, 1);
+        assert.equal(await evaluate("!!document.querySelector('[aria-label=\"Actions for Delete Fixture A\"]')"), true);
+        failDeletion = false; await confirmTwice();
+        await wait("!document.querySelector('#delete-clinic-confirmation') && !document.querySelector('[aria-label=\"Actions for Delete Fixture A\"]')");
+        assert.equal(deleteCalls, 2);
+        assert.equal(await evaluate("!!document.querySelector('[aria-label=\"Actions for Delete Fixture B\"]')"), true);
+        await sleep(200);
+        staleClinicList = true;
+        const beforeRefresh = clinicReads;
+        await evaluate("window.dispatchEvent(new Event('focus'))");
+        await until(() => clinicReads > beforeRefresh, 'clinic list refresh'); await sleep(250);
+        assert.equal(await evaluate("!!document.querySelector('[aria-label=\"Actions for Delete Fixture A\"]')"), false);
+        await clinicMenu('Delete Fixture B');
+        assert.equal(await evaluate("document.body.innerText.includes('Re-enable Clinic') && document.body.innerText.includes('Delete Clinic')"), true);
+        console.log('PASS admin delete menu, typed confirmation, cancellation, safe retry, duplicate prevention and stale-list protection; existing actions remain');
+        adminMode = false;
+        await send('Page.navigate', { url: `${origin}/dashboard/clinics` });
+        await wait("document.querySelector('[aria-label=\"Actions for Delete Fixture B\"]')");
+        await clinicMenu('Delete Fixture B');
+        assert.equal(await evaluate("[...document.querySelectorAll('[role=menuitem]')].some(e=>e.textContent.trim()==='Delete Clinic')"), false);
+        console.log('PASS clinic managers do not see the platform-admin deletion action');
         console.log(`Browser checks passed; ${calls.length} local API requests intercepted, no live records or email used.`);
     } finally {
         socket?.close(); stop(chrome); stop(server);

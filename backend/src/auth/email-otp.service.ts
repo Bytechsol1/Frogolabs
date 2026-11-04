@@ -30,6 +30,8 @@ export class EmailOtpService {
     }
 
     private async reserve(tx: Prisma.TransactionClient, email: string, user: { id: string; name: string }, purpose = 'EMAIL_VERIFICATION'): Promise<Delivery> {
+        const [owner] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "User" WHERE id = ${user.id} FOR KEY SHARE`;
+        if (!owner) throw new BadRequestException('This account is no longer available. Please register again.');
         const now = new Date();
         const previous = await tx.otpVerification.findUnique({ where: { email } });
         if (previous?.last_sent_at && now.getTime() - previous.last_sent_at.getTime() < COOLDOWN_MS) {

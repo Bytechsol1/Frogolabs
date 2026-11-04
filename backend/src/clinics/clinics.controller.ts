@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Delete, Get, Post, Put, Param, Body, UseGuards, Request } from '@nestjs/common';
 import { requireClinic, requirePlatformAdmin } from '../common/tenant';
 import { ClinicsService } from './clinics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,5 +30,11 @@ export class ClinicsController {
     update(@Param('id') id: string, @Body() data: unknown, @Request() req) {
         requirePlatformAdmin(req.user);
         return this.clinicsService.update(id, data);
+    }
+
+    @Delete(':id')
+    remove(@Param('id') id: string, @Body() data: unknown, @Request() req) {
+        requirePlatformAdmin(req.user);
+        return this.clinicsService.remove(id, data);
     }
 }

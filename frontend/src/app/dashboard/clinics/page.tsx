@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,6 +17,7 @@ import {
     MoreHorizontal,
     Eye,
     UserMinus,
+    Trash2,
     AlertCircle,
     Users,
     type LucideIcon,
@@ -40,16 +41,32 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
+interface ClinicListItem {
+    id: string;
+    name: string;
+    contact_name: string;
+    email: string | null;
+    phone: string | null;
+    status: string | null;
+    _count?: { patients: number; workflows: number };
+}
+
 export default function AllClinicsPage() {
     const { user } = useAuth();
     const router = useRouter();
-    const [clinics, setClinics] = useState<any[]>([]);
+    const [clinics, setClinics] = useState<ClinicListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
     const [isDisableModalOpen, setIsDisableModalOpen] = useState(false);
-    const [selectedClinic, setSelectedClinic] = useState<any>(null);
+    const [selectedClinic, setSelectedClinic] = useState<ClinicListItem | null>(null);
     const [disabling, setDisabling] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [confirmationName, setConfirmationName] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+    const deletionInFlight = useRef(false);
+    const deletedClinics = useRef(new Set<string>());
 
     useEffect(() => {
         if (!user?.token) return;
@@ -59,11 +76,11 @@ export default function AllClinicsPage() {
             if (fetching) return;
             fetching = true;
             try {
-                const res = await axios.get('/api/v1/clinics', {
+                const res = await axios.get<ClinicListItem[]>('/api/v1/clinics', {
                     headers: { Authorization: `Bearer ${user.token}` },
                     signal: controller.signal,
                 });
-                if (!controller.signal.aborted) setClinics(res.data);
+                if (!controller.signal.aborted) setClinics(res.data.filter(clinic => !deletedClinics.current.has(clinic.id)));
             } catch {
                 // Keep the last successful list during a temporary connection failure.
             } finally {
@@ -102,7 +119,7 @@ export default function AllClinicsPage() {
     const active = clinics.filter(c => (c.status || 'Active') === 'Active').length;
     const inactive = clinics.filter(c => c.status === 'Inactive').length;
 
-    const statusColor = (s: string) => {
+    const statusColor = (s: string | null) => {
         if (!s || s === 'Active') return 'bg-[#080e1e] text-[#cbb28d] border border-[#cbb28d]/30 font-bold';
         return 'bg-slate-200 text-slate-700';
     };
@@ -214,7 +231,7 @@ export default function AllClinicsPage() {
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger
                                                     render={
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-[#080e1e] hover:text-white">
+                                                        <Button variant="ghost" size="icon" aria-label={`Actions for ${c.name}`} className="h-8 w-8 rounded-full hover:bg-[#080e1e] hover:text-white">
                                                             <MoreHorizontal className="w-4 h-4" />
                                                         </Button>
                                                     }
@@ -230,6 +247,14 @@ export default function AllClinicsPage() {
                                                     >
                                                         <UserMinus className="w-4 h-4" /> {c.status === 'Inactive' ? 'Re-enable Clinic' : 'Disable Clinic'}
                                                     </DropdownMenuItem>
+                                                    {user?.role === 'ADMIN' && <>
+                                                        <DropdownMenuSeparator className="bg-[#e6e0ce]" />
+                                                        <DropdownMenuItem className="gap-2 text-xs font-bold text-rose-600 focus:text-rose-700" onClick={() => {
+                                                            setSelectedClinic(c); setConfirmationName(''); setDeleteError(''); setIsDeleteModalOpen(true);
+                                                        }}>
+                                                            <Trash2 className="w-4 h-4" /> Delete Clinic
+                                                        </DropdownMenuItem>
+                                                    </>}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
@@ -292,6 +317,38 @@ export default function AllClinicsPage() {
                         >
                             {disabling ? 'Saving…' : selectedClinic?.status === 'Inactive' ? 'Re-enable Clinic' : 'Disable Clinic'}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={isDeleteModalOpen} onOpenChange={open => { if (!deletionInFlight.current) setIsDeleteModalOpen(open); }}>
+                <DialogContent className="bg-white border-[#e4dec3] rounded-3xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-rose-700 font-bold"><Trash2 className="w-5 h-5" /> Permanently delete clinic?</DialogTitle>
+                        <DialogDescription className="pt-2 text-sm leading-relaxed text-slate-600">
+                            Deleting <strong>{selectedClinic?.name}</strong> permanently removes its staff accounts, patients, sessions, lab reports, logo and branding from Frigo Flow. This cannot be undone. You can register a new clinic with the same email afterward.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <label htmlFor="delete-clinic-confirmation" className="text-sm font-semibold text-[#080e1e]">Type {selectedClinic?.name} to confirm</label>
+                        <Input id="delete-clinic-confirmation" autoComplete="off" value={confirmationName} onChange={event => setConfirmationName(event.target.value)} disabled={deleting} />
+                        {deleteError && <p role="alert" className="text-sm text-rose-700">{deleteError}</p>}
+                    </div>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button type="button" variant="outline" onClick={() => setIsDeleteModalOpen(false)} disabled={deleting}>Cancel</Button>
+                        <Button type="button" className="bg-rose-700 text-white hover:bg-rose-800" disabled={deleting || confirmationName.trim() !== selectedClinic?.name.trim()} onClick={async () => {
+                            if (!selectedClinic || user?.role !== 'ADMIN' || deletionInFlight.current) return;
+                            deletionInFlight.current = true; setDeleting(true); setDeleteError('');
+                            try {
+                                await axios.delete(`/api/v1/clinics/${selectedClinic.id}`, { headers: { Authorization: `Bearer ${user.token}` }, data: { confirmationName: confirmationName.trim() } });
+                                deletedClinics.current.add(selectedClinic.id);
+                                setClinics(previous => previous.filter(clinic => clinic.id !== selectedClinic.id));
+                                setIsDeleteModalOpen(false); setSelectedClinic(null);
+                            } catch (error: unknown) {
+                                const response = axios.isAxiosError<{ message?: unknown }>(error) ? error.response : undefined;
+                                setDeleteError(response && response.status < 500 && typeof response.data?.message === 'string'
+                                    ? response.data.message : 'The clinic could not be deleted. Please try again.');
+                            } finally { deletionInFlight.current = false; setDeleting(false); }
+                        }}>{deleting ? 'Deleting…' : 'Delete Clinic Permanently'}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
