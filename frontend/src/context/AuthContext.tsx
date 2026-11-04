@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
+import { clearEmailVerification } from '@/lib/email-verification';
 
 interface AuthUser {
     id: string;
@@ -38,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             if (request === profileRequest.current && localStorage.getItem('access_token') === token) {
                 setUser({ ...res.data, token });
+                if (res.data.email_verified) clearEmailVerification(res.data.email);
             }
         } catch (err) {
             // A temporary network failure must not discard an otherwise valid session.

@@ -16,17 +16,18 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/context/AuthContext';
-import { EMAIL_VERIFICATION_KEY, maskEmail, prepareEmailVerification } from '@/lib/email-verification';
+import { EMAIL_VERIFICATION_KEY, maskEmail, prepareEmailVerification, completeEmailVerification, clearEmailVerification } from '@/lib/email-verification';
 
 export default function VerifyEmailPage() {
     const { branding: publicBranding, clinicId, error: clinicError } = usePublicBranding();
     const branding = publicBranding;
     useBrandTitle(branding);
     const router = useRouter();
-    const { login } = useAuth();
+    const { login, user } = useAuth();
     const [email, setEmail] = useState('');
     const emailValidation = useEmailValidation(email);
     const [sent, setSent] = useState(false);
+    const [verified, setVerified] = useState(false);
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [deadline, setDeadline] = useState(0);
     const [seconds, setSeconds] = useState(0);
@@ -38,16 +39,31 @@ export default function VerifyEmailPage() {
     const inputs = useRef<(HTMLInputElement | null)[]>([]);
 
     useEffect(() => {
-        try {
-            const saved = JSON.parse(sessionStorage.getItem(EMAIL_VERIFICATION_KEY) || 'null');
-            if (typeof saved?.email === 'string' && saved.email.length <= 254) {
-                setEmail(saved.email);
-                setSent(saved.sent === true);
-                if (Number.isFinite(saved.resendAt)) setDeadline(saved.resendAt);
-            }
-        } catch { /* No stored registration context. */ }
-        setReady(true);
+        let active = true;
+        queueMicrotask(() => {
+            if (!active) return;
+            try {
+                const saved = JSON.parse(sessionStorage.getItem(EMAIL_VERIFICATION_KEY) || 'null');
+                if (typeof saved?.email === 'string' && saved.email.length <= 254) {
+                    setEmail(saved.email);
+                    setSent(saved.sent === true);
+                    setVerified(saved.verified === true);
+                    if (Number.isFinite(saved.resendAt)) setDeadline(saved.resendAt);
+                }
+            } catch { /* No stored registration context. */ }
+            setReady(true);
+        });
+        return () => { active = false; };
     }, []);
+
+    useEffect(() => {
+        // A restored verification page must not ask an already verified session for another code.
+        // A pending email change is different: its address does not match the current profile yet.
+        if (ready && user?.email_verified && (!email || normalizeEmail(user.email) === normalizeEmail(email))) {
+            clearEmailVerification(user.email);
+            router.replace('/dashboard');
+        }
+    }, [ready, user, email, router]);
 
     useEffect(() => {
         const tick = () => setSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
@@ -71,7 +87,7 @@ export default function VerifyEmailPage() {
     }
 
     async function resend() {
-        if (locked.current || seconds > 0) return;
+        if (verified || locked.current || seconds > 0) return;
         if (!emailValidation.check()) return;
         locked.current = true; setBusy('resend'); setError(''); setSuccess('');
         try {
@@ -86,14 +102,17 @@ export default function VerifyEmailPage() {
 
     async function verify(event: React.FormEvent) {
         event.preventDefault();
+        if (verified) return;
         if (!emailValidation.check()) return;
         if (locked.current || !/^\d{6}$/.test(otp.join(''))) return;
         locked.current = true; setBusy('verify'); setError(''); setSuccess('');
         try {
             const { data } = await axios.post('/api/v1/auth/register/verify', { email: normalizeEmail(email), otp: otp.join('') });
+            if (typeof data.access_token !== 'string' || !data.access_token.trim()) throw new Error('Verification did not return a session.');
+            completeEmailVerification(email);
+            setVerified(true);
             setOtp(['', '', '', '', '', '']);
             setSuccess('Email verified successfully.');
-            try { sessionStorage.removeItem(EMAIL_VERIFICATION_KEY); } catch { }
             try {
                 await login(data.access_token);
                 router.replace('/dashboard');
@@ -121,16 +140,20 @@ export default function VerifyEmailPage() {
                         <div className="flex items-center gap-3">
                             <div className="w-11 h-11 shrink-0 rounded-xl bg-[#080e1e] flex items-center justify-center"><Mail className="w-5 h-5 text-[#cbb28d]" aria-hidden="true" /></div>
                             <div>
-                                <CardTitle className="text-xl font-extrabold tracking-tight text-[#080e1e]">Verify Your Email</CardTitle>
+                                <CardTitle className="text-xl font-extrabold tracking-tight text-[#080e1e]">{verified ? 'Email Verified' : 'Verify Your Email'}</CardTitle>
                                 <CardDescription className="text-xs leading-relaxed text-slate-500 mt-1">
-                                    {sent ? 'We sent a 6-digit verification code to:' : 'Request a verification code for your email:'}
+                                    {verified ? 'Your email is verified.' : sent ? 'We sent a 6-digit verification code to:' : 'Request a verification code for your email:'}
                                     {email && <strong className="block mt-1 break-all font-semibold text-[#080e1e]">{maskEmail(email)}</strong>}
                                 </CardDescription>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent className="p-5 sm:p-6">
-                        <form onSubmit={verify} className="space-y-5">
+                        {verified ? <div className="space-y-5">
+                            <p role="status" className="text-sm leading-relaxed text-slate-600">{busy === 'verify' ? 'Opening your dashboard…' : 'Sign in with your password to continue. You do not need another verification code.'}</p>
+                            {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 text-center font-medium">{error}</p>}
+                            <Link href={clinicId ? `/login?clinic=${encodeURIComponent(clinicId)}` : '/login'} className="flex min-h-11 items-center justify-center rounded-full bg-[#080e1e] px-4 text-sm font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c7657]">Continue to sign in</Link>
+                        </div> : <form onSubmit={verify} className="space-y-5">
                             {(!sent || !!emailValidation.error) && <div className="space-y-2"><Label htmlFor="verification-email" className="text-[11px] font-bold uppercase tracking-wider text-[#080e1e]">Email</Label><EmailInput error={emailValidation.error} className="h-11 rounded-xl border-[#ded8c4] bg-white text-[#080e1e] focus-visible:border-[#8c7657] focus-visible:ring-2 focus-visible:ring-[#cbb28d]/30" id="verification-email"  required value={email} disabled={!!busy} maxLength={254} onChange={event => { setEmail(event.target.value); setError(''); }} /></div>}
                             <div className="space-y-3">
                                 <Label htmlFor="otp-digit-1" className="text-[11px] font-bold uppercase tracking-wider text-[#080e1e]">Enter 6-digit verification code</Label>
@@ -157,7 +180,7 @@ export default function VerifyEmailPage() {
                                 <button type="button" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg text-[#8c7657] font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8c7657]" onClick={resend} disabled={!!busy || !ready || seconds > 0}><RefreshCw className={`w-3.5 h-3.5 ${busy === 'resend' ? 'animate-spin' : ''}`} />{busy === 'resend' ? 'Sending...' : seconds > 0 ? `Resend code in ${seconds}s` : 'Resend Code'}</button>
                             </div>
                             <p className="text-center text-sm"><Link href="/login" className="font-semibold text-[#080e1e] underline decoration-[#cbb28d] underline-offset-4">Sign in</Link></p>
-                        </form>
+                        </form>}
                     </CardContent>
                 </Card>
             </div>

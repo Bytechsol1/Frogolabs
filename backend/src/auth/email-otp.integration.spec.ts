@@ -115,6 +115,20 @@ integration('Persistent email verification', () => {
         const results = await Promise.allSettled([service.verify(data.email, codes.get(data.email)!), restarted.verify(data.email, codes.get(data.email)!)]);
         expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
     });
+    it('keeps verification through restart and later password logins without sending a second code', async () => {
+        const data = fixture();
+        await service.register(data);
+        const auth = new AuthService(new UsersService(prisma as any), new JwtService({ secret: 'fixture-only-secret' }), prisma as any, service);
+        await auth.verifyOtp(data.email, codes.get(data.email)!);
+        const restarted = new AuthService(new UsersService(prisma as any), new JwtService({ secret: 'fixture-only-secret' }), prisma as any, new EmailOtpService(prisma as any, mail as any));
+        expect((await prisma.user.findUniqueOrThrow({ where: { email: data.email } })).email_verified).toBe(true);
+        const profile = await restarted.validateUser(data.email, data.password);
+        expect((await restarted.login(profile)).access_token).toEqual(expect.any(String));
+        await restarted.resendOtp(data.email);
+        expect(mail.sendOtp).toHaveBeenCalledTimes(1);
+        await expect(restarted.verifyOtp(data.email, codes.get(data.email)!)).rejects.toMatchObject({ response: { code: 'OTP_INVALID' } });
+        expect((await restarted.login(await restarted.validateUser(data.email, data.password))).access_token).toEqual(expect.any(String));
+    });
     it('rolls back the new clinic, account and challenge on delivery failure and permits signup retry', async () => {
         const data = fixture();
         mail.sendOtp.mockImplementationOnce(async (email, code) => { await deliver(email, code); throw new Error('private SMTP detail'); });
