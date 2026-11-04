@@ -4,12 +4,17 @@ import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { RegisterDto } from './auth.dto';
+import { RegisterDto, registrationSchema } from './auth.dto';
+import { z } from 'zod';
 import { requireEmail } from '../common/email-validation';
 
 const EXPIRY_MS = 10 * 60 * 1000;
 const COOLDOWN_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
+const ORPHAN_REGISTRATION = 'ORPHAN_REGISTRATION';
+const recoverySchema = registrationSchema.omit({ email: true, password: true }).extend({
+    password_hash: z.string().regex(/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/),
+}).strict();
 const sentResponse = () => ({
     message: 'If this email is eligible, a verification code has been sent.',
     resend_after: 60,
@@ -29,7 +34,7 @@ export class EmailOtpService {
         }, { timeout: 30000 });
     }
 
-    private async reserve(tx: Prisma.TransactionClient, email: string, user: { id: string; name: string }, purpose = 'EMAIL_VERIFICATION'): Promise<Delivery> {
+    private async reserve(tx: Prisma.TransactionClient, email: string, user: { id: string; name: string }, purpose = 'EMAIL_VERIFICATION', pendingData?: Prisma.InputJsonValue): Promise<Delivery> {
         const [owner] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "User" WHERE id = ${user.id} FOR KEY SHARE`;
         if (!owner) throw new BadRequestException('This account is no longer available. Please register again.');
         const now = new Date();
@@ -47,7 +52,7 @@ export class EmailOtpService {
             user_id: user.id, otp_hash: hash, purpose, attempt_count: 0,
             expires_at: new Date(now.getTime() + EXPIRY_MS), last_sent_at: now,
             verified_at: null, invalidated_at: null, created_at: now,
-            pending_data: Prisma.JsonNull,
+            pending_data: pendingData ?? Prisma.JsonNull,
         };
         // One row per email: replacing the hash immediately invalidates the old code.
         await tx.otpVerification.upsert({ where: { email }, create: { email, ...data }, update: data });
@@ -78,7 +83,17 @@ export class EmailOtpService {
     async register(data: RegisterDto) {
         data = { ...data, email: requireEmail(data.email) };
         return this.locked(data.email, async tx => {
-            const existing = await tx.user.findFirst({ where: { email: { equals: data.email, mode: 'insensitive' } } });
+            const matches = await tx.user.findMany({ where: { email: { equals: data.email, mode: 'insensitive' } } });
+            if (matches.length > 1) throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'This email is already registered. Please use another email or sign in.' });
+            const existing = matches[0];
+            if (existing?.role === 'CLINIC_USER' && existing.clinic_id === null) {
+                const reservedClinic = await tx.clinic.count({ where: { email: { equals: data.email, mode: 'insensitive' } } });
+                if (reservedClinic) throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'This email is already registered. Please use another email or sign in.' });
+                // Manual Clinic deletion sets User.clinic_id to NULL. Preserve that
+                // account until the mailbox owner proves ownership with a fresh OTP.
+                const recovery = recoverySchema.parse({ clinicName: data.clinicName, contactName: data.contactName, phone: data.phone, password_hash: await bcrypt.hash(data.password, 12) });
+                return this.deliver(await this.reserve(tx, data.email, { id: existing.id, name: data.contactName }, ORPHAN_REGISTRATION, recovery), true);
+            }
             if (existing) {
                 if (!existing.email_verified) {
                     throw new ConflictException({ code: 'EMAIL_NOT_VERIFIED', message: 'This account is awaiting email verification. Request a new code to continue.' });
@@ -103,8 +118,13 @@ export class EmailOtpService {
         email = requireEmail(email);
         const delivery = await this.locked(email, async tx => {
             const user = await tx.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
-            if (user && !user.email_verified) return this.reserve(tx, email, user);
             const pending = await tx.otpVerification.findUnique({ where: { email } });
+            if (user?.role === 'CLINIC_USER' && user.clinic_id === null && pending?.purpose === ORPHAN_REGISTRATION && pending.user_id === user.id && !pending.verified_at) {
+                const recovery = recoverySchema.safeParse(pending.pending_data);
+                if (!recovery.success) throw new BadRequestException('Please return to signup and enter your clinic details again.');
+                return this.reserve(tx, email, { id: user.id, name: recovery.data.contactName }, ORPHAN_REGISTRATION, recovery.data);
+            }
+            if (user && !user.email_verified) return this.reserve(tx, email, user);
             if (!user && pending?.purpose === 'EMAIL_CHANGE' && pending.user_id && !pending.verified_at) {
                 const owner = await tx.user.findUnique({ where: { id: pending.user_id } });
                 if (owner) return this.reserve(tx, email, owner, 'EMAIL_CHANGE');
@@ -151,7 +171,25 @@ export class EmailOtpService {
                     ? error('OTP_ATTEMPTS_EXCEEDED', 'Too many incorrect attempts. Please request a new code.')
                     : error('OTP_INCORRECT', 'Incorrect verification code.');
             }
+            await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${record.user_id} FOR UPDATE`;
             const user = await tx.user.findUnique({ where: { id: record.user_id } });
+            if (record.purpose === ORPHAN_REGISTRATION) {
+                const recovery = recoverySchema.safeParse(record.pending_data);
+                const occupiedClinic = await tx.clinic.count({ where: { email: { equals: email, mode: 'insensitive' } } });
+                const otherAccount = await tx.user.count({ where: { email: { equals: email, mode: 'insensitive' }, id: { not: record.user_id } } });
+                if (!recovery.success || !user || user.role !== 'CLINIC_USER' || user.clinic_id !== null || user.email.toLowerCase() !== email || occupiedClinic || otherAccount) {
+                    await tx.otpVerification.update({ where: { id: record.id }, data: { invalidated_at: new Date(), pending_data: Prisma.JsonNull } });
+                    return error('OTP_INVALID', 'Registration details have changed. Please return to signup.');
+                }
+                // A fresh user ID prevents old JWTs from gaining access to the new clinic.
+                // All replacement writes commit only after valid mailbox proof.
+                await tx.user.delete({ where: { id: user.id, clinic_id: null, role: 'CLINIC_USER' } });
+                const clinic = await tx.clinic.create({ data: { name: recovery.data.clinicName, contact_name: recovery.data.contactName, email, phone: recovery.data.phone, status: 'Active' } });
+                const fresh = await tx.user.create({ data: { email, name: recovery.data.contactName, password_hash: recovery.data.password_hash, email_verified: true, role: 'CLINIC_USER', clinic_id: clinic.id, is_clinic_admin: true }, include: { clinic: { select: { name: true, status: true } } } });
+                await tx.otpVerification.deleteMany({ where: { user_id: user.id, id: { not: record.id } } });
+                await tx.otpVerification.update({ where: { id: record.id }, data: { user_id: fresh.id, verified_at: new Date(), invalidated_at: new Date(), otp_hash: null, pending_data: Prisma.JsonNull } });
+                return { user: fresh };
+            }
             if (!user || !['EMAIL_VERIFICATION', 'EMAIL_CHANGE'].includes(record.purpose)
                 || (record.purpose === 'EMAIL_VERIFICATION' && (user.email.toLowerCase() !== email || user.email_verified))) {
                 return error('OTP_INVALID', 'No active verification code. Please request a new code.');
@@ -161,7 +199,7 @@ export class EmailOtpService {
                 if (occupied) return error('OTP_INVALID', 'Unable to verify this email address.');
             }
             const verified = await tx.user.update({ where: { id: user.id }, data: { email, email_verified: true }, include: { clinic: { select: { name: true, status: true } } } });
-            await tx.otpVerification.update({ where: { id: record.id }, data: { verified_at: new Date(), invalidated_at: new Date(), otp_hash: null } });
+            await tx.otpVerification.update({ where: { id: record.id }, data: { verified_at: new Date(), invalidated_at: new Date(), otp_hash: null, pending_data: Prisma.JsonNull } });
             return { user: verified };
         });
         // Throw after commit so failed-attempt counts and invalidation persist.

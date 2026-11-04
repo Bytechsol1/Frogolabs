@@ -30,11 +30,20 @@ integration('Persistent email verification', () => {
         return { email, clinicName: 'OTP Test Fixture', contactName: 'OTP Test', phone: '+12025550123', password: 'fixture-password' };
     };
     const cooldown = (email: string) => prisma.otpVerification.update({ where: { email }, data: { last_sent_at: new Date(Date.now() - 61000) } });
+    const orphan = async (data: ReturnType<typeof fixture>, verified = true) => {
+        await service.register(data);
+        const user = await prisma.user.findUniqueOrThrow({ where: { email: data.email } });
+        if (verified) await service.verify(data.email, codes.get(data.email)!);
+        // Reproduce a manual Supabase Clinic-row deletion: its users remain with clinic_id NULL.
+        await prisma.clinic.delete({ where: { id: user.clinic_id! } });
+        await cooldown(data.email);
+        return prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    };
     beforeEach(() => { mail.sendOtp.mockReset().mockImplementation(deliver); });
     afterAll(async () => {
         try {
             await prisma.otpVerification.deleteMany({ where: { email: { in: emails } } });
-            await prisma.user.deleteMany({ where: { email: { in: emails } } });
+            await prisma.user.deleteMany({ where: { email: { in: emails, mode: 'insensitive' } } });
             await prisma.clinic.deleteMany({ where: { email: { in: emails } } });
         } finally { await prisma.$disconnect(); }
     });
@@ -200,6 +209,88 @@ integration('Persistent email verification', () => {
         await expect(service.register(data)).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
         expect(await prisma.user.count({ where: { email: data.email } })).toBe(0);
         expect(mail.sendOtp).not.toHaveBeenCalled();
+    });
+    it('recovers a verified orphan only after OTP proof, survives resend/restart, and revokes its old identity', async () => {
+        const data = fixture(); const old = await orphan(data);
+        const signup = { ...data, email: data.email.toUpperCase(), clinicName: 'Fresh Clinic', contactName: 'Fresh Owner', password: 'new-fixture-password' };
+        const result = await service.register(signup);
+        expect(result).not.toHaveProperty('access_token');
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).toEqual(old);
+        expect(await prisma.clinic.count({ where: { email: data.email } })).toBe(0);
+        const pending = await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } });
+        expect(pending.purpose).toBe('ORPHAN_REGISTRATION');
+        expect(pending.pending_data).not.toHaveProperty('password');
+        expect(await bcrypt.compare(signup.password, (pending.pending_data as { password_hash: string }).password_hash)).toBe(true);
+        await expect(service.verify(data.email, '000000')).rejects.toMatchObject({ response: { code: 'OTP_INCORRECT' } });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).toEqual(old);
+        await cooldown(data.email);
+        const restarted = new EmailOtpService(prisma as any, mail as any);
+        await restarted.resend(data.email);
+        expect((await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } })).pending_data).toEqual(pending.pending_data);
+        const auth = new AuthService(new UsersService(prisma as any), new JwtService({ secret: 'fixture-only-secret' }), prisma as any, restarted);
+        const session = await auth.verifyOtp(data.email, codes.get(data.email)!);
+        expect(session.user).toMatchObject({ email: data.email, name: signup.contactName, clinic_name: signup.clinicName, email_verified: true, is_clinic_admin: true });
+        expect(session.user.id).not.toBe(old.id);
+        expect(await prisma.user.findUnique({ where: { id: old.id } })).toBeNull();
+        await expect(JwtStrategy.prototype.validate.call({ prisma } as any, { sub: old.id })).rejects.toMatchObject({ status: 401 });
+        expect((await auth.validateUser(data.email, signup.password)).id).toBe(session.user.id);
+        expect(await auth.validateUser(data.email, data.password)).toBeNull();
+        expect((await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } })).pending_data).toBeNull();
+    });
+    it('also recovers an unverified orphan without overwriting it before proof', async () => {
+        const data = fixture(); const old = await orphan(data, false);
+        await service.register({ ...data, password: 'new-fixture-password' });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).toEqual(old);
+        expect((await service.verify(data.email, codes.get(data.email)!)).clinic_id).not.toBeNull();
+    });
+    it('rolls back pending orphan recovery on delivery failure and preserves the previous account and challenge', async () => {
+        const data = fixture(); const old = await orphan(data);
+        const previous = await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } });
+        mail.sendOtp.mockRejectedValueOnce(new Error('Synthetic delivery failure'));
+        await expect(service.register({ ...data, password: 'new-fixture-password' })).rejects.toMatchObject({ status: 503, response: { code: 'EMAIL_DELIVERY_FAILED' } });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).toEqual(old);
+        expect(await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } })).toEqual(previous);
+        expect(await prisma.clinic.count({ where: { email: data.email } })).toBe(0);
+    });
+    it('never replaces a platform administrator as orphan recovery', async () => {
+        const data = fixture();
+        const admin = await prisma.user.create({ data: { email: data.email, name: 'Synthetic Platform Admin', password_hash: 'unused-fixture-hash', role: 'ADMIN', email_verified: true } });
+        await expect(service.register(data)).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: admin.id } })).toEqual(admin);
+        expect(mail.sendOtp).not.toHaveBeenCalled();
+    });
+    it('keeps a disabled clinic and its linked account protected from re-registration', async () => {
+        const data = fixture(); await service.register(data); await service.verify(data.email, codes.get(data.email)!);
+        const user = await prisma.user.findUniqueOrThrow({ where: { email: data.email } });
+        await prisma.clinic.update({ where: { id: user.clinic_id! }, data: { status: 'Inactive' } });
+        await expect(service.register(data)).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toEqual(user);
+        expect((await prisma.clinic.findUniqueOrThrow({ where: { id: user.clinic_id! } })).status).toBe('Inactive');
+    });
+    it('refuses recovery if the old account gains a clinic membership before the code is confirmed', async () => {
+        const data = fixture(); const old = await orphan(data);
+        await service.register(data);
+        const other = fixture();
+        const clinic = await prisma.clinic.create({ data: { name: other.clinicName, contact_name: other.contactName, email: other.email } });
+        await prisma.user.update({ where: { id: old.id }, data: { clinic_id: clinic.id } });
+        await expect(service.verify(data.email, codes.get(data.email)!)).rejects.toMatchObject({ response: { code: 'OTP_INVALID' } });
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).clinic_id).toBe(clinic.id);
+        expect(await prisma.clinic.count({ where: { email: data.email } })).toBe(0);
+    });
+    it('does not claim an email reserved by an existing clinic even when the user is orphaned', async () => {
+        const data = fixture(); const old = await orphan(data);
+        const clinic = await prisma.clinic.create({ data: { name: 'Reserved Synthetic Clinic', contact_name: 'Synthetic', email: data.email } });
+        await expect(service.register(data)).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).toEqual(old);
+        expect(await prisma.clinic.findUniqueOrThrow({ where: { id: clinic.id } })).toEqual(clinic);
+    });
+    it('does not choose an orphan when another account has the same case-insensitive email', async () => {
+        const data = fixture(); const old = await orphan(data); const other = fixture();
+        const clinic = await prisma.clinic.create({ data: { name: other.clinicName, contact_name: other.contactName, email: other.email } });
+        const linked = await prisma.user.create({ data: { email: data.email.toUpperCase(), name: 'Synthetic Other User', clinic_id: clinic.id, password_hash: 'unused', email_verified: true } });
+        await expect(service.register(data)).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: old.id } })).toEqual(old);
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: linked.id } })).toEqual(linked);
     });
     it('requires verification before changing a verified profile email', async () => {
         const data = fixture();

@@ -41,7 +41,6 @@ export default function SignupPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [emailError, setEmailError] = useState('');
-    const [registeredEmail, setRegisteredEmail] = useState('');
     const [phoneError, setPhoneError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const submitting = useRef(false);
@@ -51,7 +50,7 @@ export default function SignupPage() {
         const value = e.target.value;
         setForm(prev => ({ ...prev, [field]: value }));
         setError('');
-        if (field === 'email') setEmailError(validateEmail(value) || (normalizeEmail(value) === registeredEmail ? registeredEmailMessage : ''));
+        if (field === 'email') setEmailError(validateEmail(value));
         if (field === 'phone' && phoneError) setPhoneError(validatePhone(value));
     };
 
@@ -60,7 +59,7 @@ export default function SignupPage() {
         if (submitting.current) return;
         setError('');
 
-        const invalidEmail = validateEmail(form.email) || (normalizeEmail(form.email) === registeredEmail ? registeredEmailMessage : '');
+        const invalidEmail = validateEmail(form.email);
         setEmailError(invalidEmail);
         if (invalidEmail) {
             document.getElementById('email')?.focus();
@@ -111,7 +110,6 @@ export default function SignupPage() {
                 return;
             }
             if (response?.data?.code === 'EMAIL_ALREADY_REGISTERED') {
-                setRegisteredEmail(normalizeEmail(form.email));
                 setEmailError(registeredEmailMessage);
                 document.getElementById('email')?.focus();
                 return;
@@ -194,7 +192,7 @@ export default function SignupPage() {
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="min-w-0 space-y-1.5">
                                     <Label htmlFor="email" className={labelClass}>Email</Label>
-                                    <EmailInput error={emailError} id="email"  autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="you@clinic.com" required maxLength={254} value={form.email} onChange={set('email')} onBlur={() => setEmailError(validateEmail(form.email) || (normalizeEmail(form.email) === registeredEmail ? registeredEmailMessage : ''))} onInvalid={() => setEmailError(validateEmail(form.email) || 'Please enter a valid email address')} aria-invalid={!!emailError}  className={inputClass} />
+                                    <EmailInput error={emailError} id="email"  autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="you@clinic.com" required maxLength={254} value={form.email} onChange={set('email')} onBlur={() => setEmailError(validateEmail(form.email))} onInvalid={() => setEmailError(validateEmail(form.email) || 'Please enter a valid email address')} aria-invalid={!!emailError}  className={inputClass} />
                                 </div>
                                 <div className="min-w-0 space-y-1.5">
                                     <Label htmlFor="phone" className={labelClass}>Phone</Label>

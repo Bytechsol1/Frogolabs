@@ -140,8 +140,11 @@ async function until(check, label, timeout = 45000) {
         await wait("document.body.innerText.includes('This email is already registered.')");
         assert.equal(await evaluate('location.pathname'), '/signup');
         console.log('PASS verified duplicate stays restricted with the correct email error');
-        registration = 'ok'; await signup();
+        const previousRegistrations = calls.filter(pathname => pathname.endsWith('/auth/register')).length;
+        registration = 'ok'; await submit();
         await wait("location.pathname==='/verify-email' && document.body.innerText.includes('We sent a 6-digit')");
+        assert.equal(calls.filter(pathname => pathname.endsWith('/auth/register')).length, previousRegistrations + 1);
+        console.log('PASS a previously rejected email is rechecked by the server instead of staying blocked in the signup form');
         console.log('PASS accepted new signup opens verification with a resend cooldown');
         registration = 'pending'; await signup();
         await wait("location.pathname==='/verify-email' && document.querySelector('#verification-email') && document.body.innerText.includes('Request a verification code')");
