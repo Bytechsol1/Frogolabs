@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { EmailOtpService } from './email-otp.service';
 import { AuthRateLimitGuard } from './auth-rate-limit.guard';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 // Explicit opt-in to a disposable local database only; never use live application data.
 const testDatabaseUrl = process.env.EMAIL_TEST_DATABASE_URL;
@@ -71,6 +72,22 @@ integration('Persistent email verification', () => {
         expect((await service.verify(data.email, codes.get(data.email)!)).email_verified).toBe(true);
         expect((await prisma.clinic.findUniqueOrThrow({ where: { id: user.clinic_id! } })).status).toBe('Active');
         await expect(service.verify(data.email, codes.get(data.email)!)).rejects.toMatchObject({ response: { code: 'OTP_INVALID' } });
+    });
+    it('returns an authorized profile with the verification JWT and still enforces later account revocation', async () => {
+        const data = fixture();
+        const jwt = new JwtService({ secret: 'fixture-only-session-secret' });
+        const auth = new AuthService(new UsersService(prisma as any), jwt, prisma as any, service);
+        await auth.initiateRegistration(data);
+        const session = await auth.verifyOtp(data.email, codes.get(data.email)!);
+        expect(session.user).toMatchObject({ email: data.email, email_verified: true, clinic_name: data.clinicName, is_clinic_admin: true });
+        expect(session.user).not.toHaveProperty('password_hash');
+        expect(session.user).not.toHaveProperty('otp_hash');
+        const claims = jwt.verify(session.access_token);
+        expect(claims).toMatchObject({ sub: session.user.id, clinic_id: session.user.clinic_id, role: session.user.role });
+        expect(await JwtStrategy.prototype.validate.call({ prisma } as any, claims)).toEqual(session.user);
+        await prisma.clinic.update({ where: { id: session.user.clinic_id! }, data: { status: 'Inactive' } });
+        await expect(JwtStrategy.prototype.validate.call({ prisma } as any, claims)).rejects.toMatchObject({ status: 401 });
+        expect(mail.sendOtp).toHaveBeenCalledTimes(1);
     });
     it('does not re-enable an admin-disabled clinic when email is verified', async () => {
         const data = fixture();

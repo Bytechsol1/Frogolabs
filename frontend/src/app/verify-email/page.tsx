@@ -7,7 +7,7 @@ import { EmailInput } from '@/components/ui/email-input';
 import { normalizeEmail } from '@/lib/email-validation';
 import { useEmailValidation } from '@/lib/use-email-validation';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
@@ -23,7 +23,7 @@ export default function VerifyEmailPage() {
     const branding = publicBranding;
     useBrandTitle(branding);
     const router = useRouter();
-    const { login, user } = useAuth();
+    const { login, user, isLoading } = useAuth();
     const [email, setEmail] = useState('');
     const emailValidation = useEmailValidation(email);
     const [sent, setSent] = useState(false);
@@ -31,12 +31,25 @@ export default function VerifyEmailPage() {
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [deadline, setDeadline] = useState(0);
     const [seconds, setSeconds] = useState(0);
-    const [busy, setBusy] = useState<'verify' | 'resend' | null>(null);
+    const [busy, setBusy] = useState<'verify' | 'resend' | 'session' | null>(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [ready, setReady] = useState(false);
     const locked = useRef(false);
     const inputs = useRef<(HTMLInputElement | null)[]>([]);
+    const verifiedSession = useRef<{ token: string; profile?: unknown } | null>(null);
+    const attemptedSession = useRef(false);
+
+    const openDashboard = useCallback(async () => {
+        if (locked.current) return;
+        locked.current = true; setBusy('session'); setError('');
+        try {
+            const session = verifiedSession.current || { token: localStorage.getItem('access_token') || '' };
+            await login(session.token, session.profile);
+            router.replace('/dashboard');
+        } catch { setError('Your dashboard could not be opened. Please retry. Your email verification is complete.'); }
+        finally { locked.current = false; setBusy(null); }
+    }, [login, router]);
 
     useEffect(() => {
         let active = true;
@@ -64,6 +77,14 @@ export default function VerifyEmailPage() {
             router.replace('/dashboard');
         }
     }, [ready, user, email, router]);
+
+    useEffect(() => {
+        // Resume the existing authenticated session after reload; never ask for a password or another OTP here.
+        if (ready && verified && !isLoading && !user && !attemptedSession.current) {
+            attemptedSession.current = true;
+            queueMicrotask(() => { void openDashboard(); });
+        }
+    }, [ready, verified, isLoading, user, openDashboard]);
 
     useEffect(() => {
         const tick = () => setSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
@@ -110,13 +131,15 @@ export default function VerifyEmailPage() {
             const { data } = await axios.post('/api/v1/auth/register/verify', { email: normalizeEmail(email), otp: otp.join('') });
             if (typeof data.access_token !== 'string' || !data.access_token.trim()) throw new Error('Verification did not return a session.');
             completeEmailVerification(email);
+            verifiedSession.current = { token: data.access_token, profile: data.user };
+            attemptedSession.current = true;
             setVerified(true);
             setOtp(['', '', '', '', '', '']);
             setSuccess('Email verified successfully.');
             try {
-                await login(data.access_token);
+                await login(data.access_token, data.user);
                 router.replace('/dashboard');
-            } catch { setError('Your email is verified. Please sign in to continue.'); }
+            } catch { setError('Your dashboard could not be opened. Please retry. Your email verification is complete.'); }
         } catch (err) { showError(err, 'Unable to verify your email. Please try again.'); }
         finally { locked.current = false; setBusy(null); }
     }
@@ -150,9 +173,9 @@ export default function VerifyEmailPage() {
                     </CardHeader>
                     <CardContent className="p-5 sm:p-6">
                         {verified ? <div className="space-y-5">
-                            <p role="status" className="text-sm leading-relaxed text-slate-600">{busy === 'verify' ? 'Opening your dashboard…' : 'Sign in with your password to continue. You do not need another verification code.'}</p>
+                            <p role="status" className="text-sm leading-relaxed text-slate-600">Opening your dashboard…</p>
                             {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 text-center font-medium">{error}</p>}
-                            <Link href={clinicId ? `/login?clinic=${encodeURIComponent(clinicId)}` : '/login'} className="flex min-h-11 items-center justify-center rounded-full bg-[#080e1e] px-4 text-sm font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c7657]">Continue to sign in</Link>
+                            {error && <Button type="button" onClick={() => { void openDashboard(); }} disabled={!!busy} className="min-h-11 w-full rounded-full bg-[#080e1e] px-4 text-sm font-bold text-white">{busy ? 'Opening dashboard…' : 'Retry opening dashboard'}</Button>}
                         </div> : <form onSubmit={verify} className="space-y-5">
                             {(!sent || !!emailValidation.error) && <div className="space-y-2"><Label htmlFor="verification-email" className="text-[11px] font-bold uppercase tracking-wider text-[#080e1e]">Email</Label><EmailInput error={emailValidation.error} className="h-11 rounded-xl border-[#ded8c4] bg-white text-[#080e1e] focus-visible:border-[#8c7657] focus-visible:ring-2 focus-visible:ring-[#cbb28d]/30" id="verification-email"  required value={email} disabled={!!busy} maxLength={254} onChange={event => { setEmail(event.target.value); setError(''); }} /></div>}
                             <div className="space-y-3">

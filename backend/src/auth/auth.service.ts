@@ -6,6 +6,7 @@ import { EmailOtpService } from './email-otp.service';
 import { AuthDtoPipe, RegisterDto, registrationSchema, profileSchema } from './auth.dto';
 import * as bcrypt from 'bcrypt';
 import { requireEmail, requireLoginEmail } from '../common/email-validation';
+import { sessionProfile } from './session-profile';
 
 @Injectable()
 export class AuthService {
@@ -50,7 +51,8 @@ export class AuthService {
 
     async verifyOtp(email: string, otp: string) {
         const user = await this.emailOtp.verify(email, otp);
-        return { ...await this.login(user), message: 'Email verified successfully.' };
+        const profile = sessionProfile(user);
+        return { ...await this.login(profile), user: profile, message: 'Email verified successfully.' };
     }
 
     async resendOtp(email: string) {

@@ -48,7 +48,8 @@ async function until(check, label, timeout = 45000) {
         const tabs = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
         socket = new WebSocket(tabs.find(tab => tab.type === 'page').webSocketDebuggerUrl);
         await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
-        let sequence = 0, registration = 'failed', verify = 'wrong', resend = 'ok', profileUnavailable = false, accountVerified = false;
+        let sequence = 0, registration = 'failed', verify = 'wrong', resend = 'ok', profileUnavailable = false, profileDenied = false, accountVerified = false;
+        const fixtureProfile = () => ({ id: 'fixture-user', email: 'ui@example.com', name: 'UI Fixture', role: 'CLINIC_USER', email_verified: accountVerified, clinic_id: 'fixture-clinic', clinic_name: 'Fixture Clinic', is_clinic_admin: true });
         const pending = new Map();
         const send = (method, params = {}) => new Promise((resolve, reject) => {
             const id = ++sequence;
@@ -78,13 +79,14 @@ async function until(check, label, timeout = 45000) {
                     } else if (pathname.endsWith('/auth/register/verify')) {
                         if (verify === 'wrong') { status = 400; body = { code: 'OTP_INCORRECT', message: 'Incorrect verification code.' }; }
                         else if (accountVerified) { status = 400; body = { code: 'OTP_INVALID', message: 'No active verification code. Please request a new code.' }; }
-                        else { accountVerified = true; body = { access_token: 'synthetic-browser-session' }; }
+                        else { accountVerified = true; body = { access_token: 'synthetic-browser-session', user: fixtureProfile() }; }
                     } else if (pathname.endsWith('/auth/login')) {
                         if (accountVerified) body = { access_token: 'synthetic-browser-session' };
                         else { status = 403; body = { code: 'EMAIL_NOT_VERIFIED', message: 'Your email has not been verified.' }; }
                     } else if (pathname.endsWith('/auth/me')) {
-                        if (profileUnavailable) { status = 503; body = { message: 'Synthetic profile outage' }; }
-                        else body = { id: 'fixture-user', email: 'ui@example.com', name: 'UI Fixture', role: 'CLINIC_USER', email_verified: accountVerified, clinic_id: 'fixture-clinic', is_clinic_admin: true };
+                        if (profileDenied) { status = 403; body = { message: 'Synthetic clinic disabled' }; }
+                        else if (profileUnavailable) { status = 503; body = { message: 'Synthetic profile outage' }; }
+                        else body = fixtureProfile();
                     }
                     else if (pathname.includes('/branding/')) body = { id: 'fixture-clinic', name: 'Fixture Clinic', services: [], logo_url: null, primary_color: '#0F766E', secondary_color: '#14B8A6' };
                     else if (pathname.endsWith('/dashboard/clinic/stats')) body = { kpi: {}, tables: { recentPatients: [] } };
@@ -147,24 +149,17 @@ async function until(check, label, timeout = 45000) {
         const verifiedBefore = calls.filter(pathname => pathname.endsWith('/auth/register/verify')).length;
         profileUnavailable = true;
         verify = 'ok'; await click('Verify Code');
-        await wait("document.body.innerText.includes('Your email is verified.')");
-        assert.equal(await evaluate("document.querySelector('#otp-digit-1') === null"), true, 'Successful verification must not ask for another OTP when loading the session fails.');
-        assert.equal(await evaluate("document.body.innerText.includes('Resend Code')"), false);
-        await send('Page.reload');
-        await wait("document.body.innerText.includes('Your email is verified.')");
-        assert.equal(await evaluate("document.querySelector('#otp-digit-1') === null"), true);
-        console.log('PASS consumed OTP stays completed through a profile outage and page reload; code and resend controls disappear');
-        profileUnavailable = false;
-        await evaluate("[...document.querySelectorAll('a')].find(e=>e.textContent.trim()==='Continue to sign in').click()");
-        await wait("location.pathname==='/login' && document.querySelector('#email')");
-        await sleep(300);
-        await input('#email', 'ui@example.com'); await input('#password', 'fixture-password');
-        await submit();
         await wait("location.pathname==='/dashboard' && document.body.innerText.includes('Add New Patient')");
+        assert.equal(calls.filter(pathname => pathname.endsWith('/auth/login')).length, 0);
+        assert.equal(await evaluate("document.body.innerText.includes('Continue to sign in')"), false);
         assert.equal(await evaluate("sessionStorage.getItem('frigo-email-verification')"), null);
         assert.equal(calls.filter(pathname => pathname.endsWith('/auth/register/verify')).length, verifiedBefore + 1);
         assert.equal(calls.filter(pathname => pathname.endsWith('/auth/register/resend')).length, sentBeforeVerification);
-        console.log('PASS verified account signs in with its password without sending or verifying a second code');
+        console.log('PASS one correct code opens dashboard directly even when profile requests fail; no password sign-in or second OTP');
+        profileUnavailable = false;
+        await send('Page.reload');
+        await wait("location.pathname==='/dashboard' && document.body.innerText.includes('Add New Patient')");
+        console.log('PASS the authenticated session survives dashboard reload');
         await send('Page.navigate', { url: `${origin}/verify-email` });
         await wait("location.pathname==='/dashboard' && document.body.innerText.includes('Add New Patient')");
         assert.equal(calls.filter(pathname => pathname.endsWith('/auth/register/resend')).length, sentBeforeVerification);
@@ -188,6 +183,11 @@ async function until(check, label, timeout = 45000) {
         await sleep(300);
         assert.equal(await evaluate('location.pathname'), '/verify-email');
         console.log('PASS a signed-in user can still verify a genuinely different email address');
+        profileDenied = true;
+        await send('Page.navigate', { url: `${origin}/dashboard` });
+        await wait("location.pathname==='/login' && document.querySelector('#email')");
+        assert.equal(await evaluate("localStorage.getItem('access_token')"), null);
+        console.log('PASS server-revoked sessions remain restricted after automatic verification sign-in');
         console.log(`Browser checks passed; ${calls.length} local API requests intercepted, no live records or email used.`);
     } finally {
         socket?.close(); stop(chrome); stop(server);

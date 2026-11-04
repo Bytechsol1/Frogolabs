@@ -33,7 +33,7 @@ async function main() {
         const loaded = run('docker', ['exec', '-i', container, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', database], fs.readFileSync(path.join(root, 'docs/frigo-flow-schema.sql'), 'utf8'));
         if (loaded.status !== 0) throw new Error('Could not load the schema into disposable PostgreSQL.');
         console.log('Testing email verification against disposable PostgreSQL with mocked email delivery.');
-        const tests = run(process.execPath, [path.join(root, 'node_modules/jest/bin/jest.js'), '--config', 'backend/package.json', '--runInBand', '--testTimeout=15000', '--runTestsByPath', 'backend/src/auth/email-otp.integration.spec.ts', 'backend/src/auth/registration.spec.ts', 'backend/src/mail/mail.service.spec.ts', 'backend/src/mail/mail.config.spec.ts', 'backend/src/mail/smtp.config.spec.ts', '--silent']);
+        const tests = run(process.execPath, [path.join(root, 'node_modules/jest/bin/jest.js'), '--config', 'backend/package.json', '--runInBand', '--testTimeout=15000', '--runTestsByPath', 'backend/src/auth/email-otp.integration.spec.ts', 'backend/src/auth/registration.spec.ts', 'backend/src/auth/session-profile.spec.ts', 'backend/src/mail/mail.service.spec.ts', 'backend/src/mail/mail.config.spec.ts', 'backend/src/mail/smtp.config.spec.ts', '--silent']);
         process.stdout.write(tests.stdout || '');
         process.stderr.write(tests.stderr || '');
         result = tests.status ?? 1;

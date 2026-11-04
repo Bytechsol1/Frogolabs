@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, UseGuards, Request, Body, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, UseGuards, Request, Body, HttpCode, HttpStatus, ForbiddenException, Header } from '@nestjs/common';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
@@ -11,6 +11,7 @@ export class AuthController {
     constructor(private authService: AuthService) { }
 
     @HttpCode(HttpStatus.OK)
+    @Header('Cache-Control', 'private, no-store')
     @UseGuards(AuthRateLimitGuard, LocalAuthGuard)
     @Post('login')
     async login(@Request() req) {
@@ -25,6 +26,7 @@ export class AuthController {
     }
 
     @Post('register/verify')
+    @Header('Cache-Control', 'private, no-store')
     @UseGuards(AuthRateLimitGuard)
     async verifyOtp(@Body(new AuthDtoPipe(verifyOtpSchema)) body: VerifyOtpDto) {
         return this.authService.verifyOtp(body.email, body.otp);

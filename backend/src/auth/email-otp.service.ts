@@ -158,7 +158,7 @@ export class EmailOtpService {
                 const occupied = await tx.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' }, id: { not: user.id } } });
                 if (occupied) return error('OTP_INVALID', 'Unable to verify this email address.');
             }
-            const verified = await tx.user.update({ where: { id: user.id }, data: { email, email_verified: true } });
+            const verified = await tx.user.update({ where: { id: user.id }, data: { email, email_verified: true }, include: { clinic: { select: { name: true, status: true } } } });
             await tx.otpVerification.update({ where: { id: record.id }, data: { verified_at: new Date(), invalidated_at: new Date(), otp_hash: null } });
             return { user: verified };
         });

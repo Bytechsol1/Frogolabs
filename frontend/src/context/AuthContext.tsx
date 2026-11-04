@@ -3,22 +3,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { clearEmailVerification } from '@/lib/email-verification';
+import { readVerifiedSessionProfile, type SessionProfile } from '@/lib/auth-session';
 
-interface AuthUser {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-    clinic_id: string | null;
-    clinic_name: string | null;
-    is_clinic_admin: boolean;
-    email_verified: boolean;
+interface AuthUser extends SessionProfile {
     token: string;
 }
 
 interface AuthContextType {
     user: AuthUser | null;
-    login: (token: string) => Promise<void>;
+    login: (token: string, profile?: unknown) => Promise<void>;
     logout: (redirectTo?: string) => void;
     isLoading: boolean;
     refreshUser: () => Promise<void>;
@@ -90,10 +83,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, [refreshUser]);
 
-    const login = async (token: string) => {
+    const login = useCallback(async (token: string, profile?: unknown) => {
+        if (typeof token !== 'string' || !token.trim()) throw new Error('A valid session is required.');
+        const authenticated = profile === undefined ? null : readVerifiedSessionProfile(profile);
+        if (profile !== undefined && !authenticated) throw new Error('The authenticated profile is invalid.');
+        // Supersede older profile requests before installing this newly authenticated session.
+        ++profileRequest.current;
         localStorage.setItem('access_token', token);
+        if (authenticated) {
+            setUser({ ...authenticated, token });
+            setIsLoading(false);
+            clearEmailVerification(authenticated.email);
+            return;
+        }
         await fetchProfile(token, true);
-    };
+    }, [fetchProfile]);
 
     const logout = (redirectTo?: string) => {
         ++profileRequest.current;
