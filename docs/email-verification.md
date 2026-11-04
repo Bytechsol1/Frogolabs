@@ -6,6 +6,8 @@ Mail uses the existing SMTP provider. Credentials stay on the server and never r
 
 Verification and resend emails use `backend/src/mail/verification-email.ts`: the Frigo Flow logo, gold/cream card, six separated code digits, ten-minute expiry and security footer. The plain-text alternative retains the complete code. Both direct SMTP and the Vercel mail function attach the unchanged `frontend/public/logo.jpg` as an inline CID image, so the HTML does not depend on downloading a remote logo. The mail endpoint only attaches this fixed asset and never accepts attachment paths from a request. Next.js explicitly includes the asset in the function trace. Deploy both backend and frontend updates for the new embedded-logo template; no new environment variables are needed. A backend-only package must retain the existing logo at its monorepo path.
 
+The layout uses compact inline styles as its mobile fallback, with desktop enhancements in media queries. The heading spans the full card width; its envelope icon shares the small label row instead of narrowing the headline. Logo blending is removed and the embedded original image has a white backing for visibility on dark backgrounds. Separate dark-mode rules provide readable card/text colors where supported. Browser previews cover 280/320/360px widths, light/dark color preferences, missing header CSS and enlarged text; native email apps may apply additional transformations. Inspect newly sent messages after deploying a template change.
+
 ## Direct SMTP configuration
 
 Configure these private variables in `backend/.env` or the backend hosting environment. Gmail is one example; retain your existing provider's host, port and credentials when using another SMTP service:
