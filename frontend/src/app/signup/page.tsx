@@ -103,26 +103,27 @@ export default function SignupPage() {
             });
             prepareEmailVerification(form.email, true, response.data.resend_after || 60);
             router.push('/verify-email');
-        } catch (err: any) {
-            if (err.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
+        } catch (err: unknown) {
+            const response = axios.isAxiosError<{ code?: string; message?: unknown }>(err) ? err.response : undefined;
+            if (response?.data?.code === 'EMAIL_NOT_VERIFIED') {
                 prepareEmailVerification(form.email, false, 0);
                 router.push('/verify-email');
                 return;
             }
-            if (err.response?.data?.code === 'EMAIL_ALREADY_REGISTERED') {
+            if (response?.data?.code === 'EMAIL_ALREADY_REGISTERED') {
                 setRegisteredEmail(normalizeEmail(form.email));
                 setEmailError(registeredEmailMessage);
                 document.getElementById('email')?.focus();
                 return;
             }
-            if (err.response?.data?.code === 'EMAIL_DELIVERY_FAILED') {
+            if (response?.data?.code === 'EMAIL_DELIVERY_FAILED') {
                 setError('Registration was not completed because the verification email could not be sent. Please try again shortly.');
                 return;
             }
-            const msg = err.response?.status >= 500 ? 'Registration is temporarily unavailable. Please try again shortly.' : err.response?.data?.message;
+            const msg = response && response.status >= 500 ? 'Registration is temporarily unavailable. Please try again shortly.' : response?.data?.message;
             if (typeof msg === 'string') {
                 setError(msg);
-            } else if (!err.response) {
+            } else if (!response) {
                 setError('Unable to reach the server. Please check your connection and try again.');
             } else {
                 setError('Something went wrong. Please try again.');
