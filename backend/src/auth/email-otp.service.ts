@@ -26,7 +26,7 @@ export class EmailOtpService {
         return this.prisma.$transaction(async tx => {
             await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`email-otp:${email}`}))`;
             return work(tx);
-        }, { timeout: 15000 });
+        }, { timeout: 30000 });
     }
 
     private async reserve(tx: Prisma.TransactionClient, email: string, user: { id: string; name: string }, purpose = 'EMAIL_VERIFICATION'): Promise<Delivery> {
@@ -52,26 +52,35 @@ export class EmailOtpService {
         return { email, otp, hash, name: user.name };
     }
 
-    private async deliver(delivery: Delivery | null) {
+    private async deliver(delivery: Delivery | null, rollbackOnFailure = false) {
         if (!delivery) return sentResponse(); // Same response for unknown/already verified accounts.
         try {
             await this.mail.sendOtp(delivery.email, delivery.otp, delivery.name);
         } catch {
             // Never invalidate a newer code if a previous SMTP request finishes late.
-            await this.prisma.otpVerification.updateMany({
-                where: { email: delivery.email, otp_hash: delivery.hash, verified_at: null },
-                data: { invalidated_at: new Date() },
-            });
-            throw new ServiceUnavailableException({ code: 'EMAIL_DELIVERY_FAILED', message: 'Unable to send verification email. Please try again.', retry_after: 60 });
+            if (!rollbackOnFailure) {
+                await this.prisma.otpVerification.updateMany({
+                    where: { email: delivery.email, otp_hash: delivery.hash, verified_at: null },
+                    data: { invalidated_at: new Date() },
+                });
+            }
+            // Registration calls this inside its transaction: the account, clinic
+            // and challenge are rolled back together if delivery is rejected.
+            throw new ServiceUnavailableException({ code: 'EMAIL_DELIVERY_FAILED', message: rollbackOnFailure
+                ? 'Registration was not saved because the verification email could not be sent. Please try again.'
+                : 'Unable to send verification email. Please try again.', retry_after: 60 });
         }
         return sentResponse();
     }
 
     async register(data: RegisterDto) {
         data = { ...data, email: requireEmail(data.email) };
-        const delivery = await this.locked(data.email, async tx => {
+        return this.locked(data.email, async tx => {
             const existing = await tx.user.findFirst({ where: { email: { equals: data.email, mode: 'insensitive' } } });
             if (existing) {
+                if (!existing.email_verified) {
+                    throw new ConflictException({ code: 'EMAIL_NOT_VERIFIED', message: 'This account is awaiting email verification. Request a new code to continue.' });
+                }
                 throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'This email is already registered. Please use another email or sign in.' });
             }
             const clinicExists = await tx.clinic.findFirst({ where: { email: { equals: data.email, mode: 'insensitive' } }, select: { id: true } });
@@ -84,9 +93,8 @@ export class EmailOtpService {
                 email: data.email, name: data.contactName, password_hash: await bcrypt.hash(data.password, 12),
                 email_verified: false, role: 'CLINIC_USER', clinic_id: clinic.id, is_clinic_admin: true,
             } });
-            return this.reserve(tx, data.email, user);
+            return this.deliver(await this.reserve(tx, data.email, user), true);
         });
-        return this.deliver(delivery);
     }
 
     async resend(email: string) {

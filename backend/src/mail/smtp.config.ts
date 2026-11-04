@@ -16,7 +16,7 @@ export function readSmtpConfig(env: NodeJS.ProcessEnv = process.env) {
         host: env.SMTP_HOST!, port, secure: env.SMTP_SECURE === 'true',
         requireTLS: env.SMTP_SECURE !== 'true',
         auth: { user: env.SMTP_USER!, pass: env.SMTP_PASS! },
-        connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
+        connectionTimeout: 5000, greetingTimeout: 5000, socketTimeout: 10000,
         logger: false, debug: false,
     };
     return { ready: true as const, options, from: { name: env.SMTP_FROM_NAME!, address: fromEmail.success ? fromEmail.data : '' } };

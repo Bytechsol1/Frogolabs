@@ -1,17 +1,17 @@
 import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
-import { readSmtpConfig } from './smtp.config';
+import { readMailConfig } from './mail.config';
 import { requireMailboxEmail } from '../common/email-validation';
 
 @Injectable()
 export class MailService implements OnModuleInit {
     private readonly logger = new Logger(MailService.name);
     private transporter: nodemailer.Transporter | null = null;
-    private readonly config = readSmtpConfig();
+    private readonly config = readMailConfig();
 
     constructor() {
-        if (this.config.ready) this.transporter = nodemailer.createTransport(this.config.options);
-        else this.logger.warn(`SMTP configuration needs attention: ${this.config.issues.join(', ')}. Authentication remains available.`);
+        if (this.config.ready && this.config.provider === 'smtp') this.transporter = nodemailer.createTransport(this.config.options);
+        if (!this.config.ready) this.logger.warn(`Email configuration needs attention: ${this.config.issues.join(', ')}. Existing verified accounts can still sign in.`);
     }
 
     async onModuleInit() {
@@ -19,6 +19,10 @@ export class MailService implements OnModuleInit {
     }
 
     async verifyConnection(): Promise<boolean> {
+        if (this.config.ready && this.config.provider === 'bridge') {
+            this.logger.log('HTTPS SMTP delivery configured.');
+            return true;
+        }
         if (!this.transporter) return false;
         try {
             await this.transporter.verify();
@@ -30,16 +34,36 @@ export class MailService implements OnModuleInit {
         }
     }
 
+    private async sendMessage(email: string, message: { subject: string; text?: string; html: string }): Promise<void> {
+        const config = this.config;
+        if (!config.ready) throw new Error('Email provider is not configured.');
+        if (config.provider === 'bridge') {
+            const response = await fetch(config.url, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${config.secret}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: email, ...message }),
+                redirect: 'error',
+                signal: AbortSignal.timeout(20000),
+            });
+            const result = await response.json().catch(() => null) as { accepted?: unknown } | null;
+            if (!response.ok || result?.accepted !== true) throw new Error('Email provider did not accept the message.');
+            return;
+        }
+        if (!this.transporter) throw new Error('Email transport is unavailable.');
+        const info = await this.transporter.sendMail({ from: config.from, to: email, ...message });
+        if (!info.accepted?.some(address => typeof address === 'string' && address.toLowerCase() === email.toLowerCase())) {
+            throw new Error('Recipient was not accepted by the email server.');
+        }
+    }
+
     async sendOtp(email: string, otp: string, _contactName: string): Promise<void> {
         email = requireMailboxEmail(email);
-        if (!this.transporter || !this.config.ready) {
+        if (!this.config.ready) {
             throw new ServiceUnavailableException('Unable to send verification email. Please try again.');
         }
 
         try {
-            const info = await this.transporter.sendMail({
-                from: this.config.from,
-                to: email,
+            await this.sendMessage(email, {
                 subject: 'Your Frigo Flow Verification Code',
                 text: `Frigo Flow\n\nVerify your email\n\nYour verification code is: ${otp}\n\nThis code expires in 10 minutes.\nIf you did not request this code, you can ignore this email.\n\nFrigo Flow`,
                 html: `
@@ -57,12 +81,9 @@ export class MailService implements OnModuleInit {
                     </div>
                 `,
             });
-            if (!info.accepted?.includes(email)) {
-                throw new Error('Recipient was not accepted by the email server.');
-            }
             this.logger.log('Registration email accepted by the mail server.');
         } catch {
-            this.logger.error('Registration email could not be sent. Check SMTP configuration and provider availability.');
+            this.logger.error('Registration email could not be sent. Check email provider configuration and availability.');
             throw new ServiceUnavailableException('Unable to send verification email. Please try again.');
         }
     }
@@ -77,16 +98,13 @@ export class MailService implements OnModuleInit {
         email = requireMailboxEmail(email);
         this.logger.log('Lab result access email requested.');
 
-        if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-            this.logger.warn('SMTP credentials not configured; email could not be sent.');
+        if (!this.config.ready) {
+            this.logger.warn('Email provider not configured; email could not be sent.');
             return;
         }
 
         try {
-            if (!this.transporter) throw new Error('SMTP unavailable');
-            await this.transporter.sendMail({
-                from: `"Frigo Labs" <${process.env.SMTP_USER}>`,
-                to: email,
+            await this.sendMessage(email, {
                 subject: 'Your Lab Results Are Ready',
                 html: `
                     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #fff;">
@@ -110,7 +128,7 @@ export class MailService implements OnModuleInit {
             });
             this.logger.log('Lab result access email accepted by the mail server.');
         } catch (error) {
-            this.logger.warn('Email delivery failed. Check SMTP configuration and provider availability.');
+            this.logger.warn('Email delivery failed. Check email provider configuration and availability.');
         }
     }
 }

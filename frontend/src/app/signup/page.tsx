@@ -104,6 +104,11 @@ export default function SignupPage() {
             prepareEmailVerification(form.email, true, response.data.resend_after || 60);
             router.push('/verify-email');
         } catch (err: any) {
+            if (err.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
+                prepareEmailVerification(form.email, false, 0);
+                router.push('/verify-email');
+                return;
+            }
             if (err.response?.data?.code === 'EMAIL_ALREADY_REGISTERED') {
                 setRegisteredEmail(normalizeEmail(form.email));
                 setEmailError(registeredEmailMessage);
@@ -111,9 +116,10 @@ export default function SignupPage() {
                 return;
             }
             if (err.response?.data?.code === 'EMAIL_DELIVERY_FAILED') {
-                prepareEmailVerification(form.email, false, err.response.data.retry_after || 60);
+                setError('Registration was not completed because the verification email could not be sent. Please try again shortly.');
+                return;
             }
-            const msg = err.response?.status >= 500 ? 'Unable to send verification email. Please try again.' : err.response?.data?.message;
+            const msg = err.response?.status >= 500 ? 'Registration is temporarily unavailable. Please try again shortly.' : err.response?.data?.message;
             if (typeof msg === 'string') {
                 setError(msg);
             } else if (!err.response) {

@@ -7,10 +7,17 @@ import { UsersService } from '../users/users.service';
 import { EmailOtpService } from './email-otp.service';
 import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 
-// Explicit opt-in: uses the configured database, isolated fixture accounts and mocked SMTP.
-const integration = process.env.AUTH_DB_TESTS === '1' ? describe : describe.skip;
+// Explicit opt-in to a disposable local database only; never use live application data.
+const testDatabaseUrl = process.env.EMAIL_TEST_DATABASE_URL;
+const integration = testDatabaseUrl ? describe : describe.skip;
 integration('Persistent email verification', () => {
-    const prisma = new PrismaClient();
+    if (testDatabaseUrl) {
+        const target = new URL(testDatabaseUrl);
+        if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || !/^\/frigo_otp_test_[a-f0-9]+$/.test(target.pathname)) {
+            throw new Error('Email tests require a fresh disposable local database.');
+        }
+    }
+    const prisma = new PrismaClient({ datasourceUrl: testDatabaseUrl });
     const emails: string[] = [];
     const codes = new Map<string, string>();
     const deliver = async (email: string, code: string) => { codes.set(email, code); };
@@ -108,14 +115,15 @@ integration('Persistent email verification', () => {
         const results = await Promise.allSettled([service.verify(data.email, codes.get(data.email)!), restarted.verify(data.email, codes.get(data.email)!)]);
         expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
     });
-    it('retains pending signup on SMTP failure and allows recovery with resend', async () => {
+    it('rolls back the new clinic, account and challenge on delivery failure and permits signup retry', async () => {
         const data = fixture();
         mail.sendOtp.mockImplementationOnce(async (email, code) => { await deliver(email, code); throw new Error('private SMTP detail'); });
         await expect(service.register(data)).rejects.toMatchObject({ status: 503, response: { code: 'EMAIL_DELIVERY_FAILED' } });
-        expect((await prisma.user.findUniqueOrThrow({ where: { email: data.email } })).email_verified).toBe(false);
+        expect(await prisma.user.count({ where: { email: data.email } })).toBe(0);
+        expect(await prisma.clinic.count({ where: { email: data.email } })).toBe(0);
+        expect(await prisma.otpVerification.count({ where: { email: data.email } })).toBe(0);
         await expect(service.verify(data.email, codes.get(data.email)!)).rejects.toMatchObject({ response: { code: 'OTP_INVALID' } });
-        await cooldown(data.email);
-        await service.resend(data.email);
+        await service.register(data);
         expect((await service.verify(data.email, codes.get(data.email)!)).email_verified).toBe(true);
     });
     it('keeps resend responses generic but rejects registered signup emails', async () => {
@@ -127,17 +135,33 @@ integration('Persistent email verification', () => {
         await expect(service.register({ ...data, email: data.email.toUpperCase() })).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
         expect(mail.sendOtp).not.toHaveBeenCalled();
     });
-    it('rejects unverified duplicate signup without issuing a new OTP or changing the account', async () => {
+    it('routes an unverified duplicate to email recovery without changing its password or creating another clinic', async () => {
         const data = fixture();
         await service.register(data);
         const previousUser = await prisma.user.findUniqueOrThrow({ where: { email: data.email } });
         const previousOtp = await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } });
         mail.sendOtp.mockClear();
-        await expect(service.register({ ...data, clinicName: 'Replacement', password: 'replacement-pass' })).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_ALREADY_REGISTERED' } });
+        await expect(service.register({ ...data, clinicName: 'Replacement', password: 'replacement-pass' })).rejects.toMatchObject({ status: 409, response: { code: 'EMAIL_NOT_VERIFIED' } });
         expect(await prisma.user.findUniqueOrThrow({ where: { email: data.email } })).toEqual(previousUser);
         expect(await prisma.otpVerification.findUniqueOrThrow({ where: { email: data.email } })).toEqual(previousOtp);
         expect(await prisma.clinic.count({ where: { email: data.email } })).toBe(1);
         expect(mail.sendOtp).not.toHaveBeenCalled();
+        await cooldown(data.email);
+        await service.resend(data.email);
+        expect((await service.verify(data.email, codes.get(data.email)!)).email_verified).toBe(true);
+        expect((await prisma.user.findUniqueOrThrow({ where: { email: data.email } })).password_hash).toBe(previousUser.password_hash);
+    });
+    it('keeps a failed verification-email resend recoverable without granting login or changing the existing account', async () => {
+        const data = fixture();
+        await service.register(data);
+        const user = await prisma.user.findUniqueOrThrow({ where: { email: data.email } });
+        await cooldown(data.email);
+        mail.sendOtp.mockRejectedValueOnce(new Error('Synthetic provider outage'));
+        await expect(service.resend(data.email)).rejects.toMatchObject({ status: 503, response: { code: 'EMAIL_DELIVERY_FAILED' } });
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).email_verified).toBe(false);
+        await cooldown(data.email);
+        await service.resend(data.email);
+        expect((await service.verify(data.email, codes.get(data.email)!)).email_verified).toBe(true);
     });
     it('rejects an email registered to a clinic even without a user account', async () => {
         const data = fixture();
