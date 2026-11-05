@@ -42,6 +42,18 @@ export function NavbarBrand({ branding }: { branding: ClinicBranding | null }) {
     </span>;
 }
 
+function AvatarLogo({ src, initial }: { src: string; initial: string }) {
+    const [failed, setFailed] = useState(false);
+    if (failed) return <>{initial}</>;
+    return <Image src={src} alt="Clinic logo" width={28} height={28} unoptimized loading="eager" className="h-full w-full rounded-full bg-white object-contain p-0.5" onError={() => setFailed(true)} />;
+}
+
+export function ClinicAvatar({ branding, initial }: { branding: ClinicBranding | null; initial: string }) {
+    return branding?.logo_url
+        ? <AvatarLogo key={`${branding.id}:${branding.logo_url}`} src={branding.logo_url} initial={initial} />
+        : <>{initial}</>;
+}
+
 export function BrandMark({ branding, className = '' }: { branding: ClinicBranding | null; className?: string }) {
     if (!branding) return <Image src="/logo.jpg" alt="Frigo Flow" width={192} height={64} unoptimized className={`max-h-16 w-auto max-w-48 object-contain ${className}`} />;
     return <span className={`inline-flex min-w-0 items-center gap-3 ${className}`}>

@@ -80,15 +80,18 @@ function AdminDashboard() {
     useEffect(() => {
         if (!user?.token) return;
         const controller = new AbortController();
+        let refreshing = false;
         const refresh = async () => {
+            if (refreshing) return;
+            refreshing = true;
             try {
-                const { data } = await axios.get('/api/v1/dashboard/admin/stats', {
+                const { data } = await axios.get('/api/v1/dashboard/admin/stats?summary=true', {
                     headers: { Authorization: `Bearer ${user.token}` }, signal: controller.signal,
                 });
                 setStats(data); setError('');
             } catch {
                 if (!controller.signal.aborted) setError('Dashboard data could not be refreshed. Please try again.');
-            } finally { if (!controller.signal.aborted) setLoading(false); }
+            } finally { refreshing = false; if (!controller.signal.aborted) setLoading(false); }
         };
         void refresh();
         const onFocus = () => { if (document.visibilityState === 'visible') void refresh(); };
@@ -184,16 +187,19 @@ function ClinicDashboard() {
     useEffect(() => {
         if (!user?.token) return;
         const controller = new AbortController();
+        let refreshing = false;
         const refresh = async () => {
+            if (refreshing) return;
+            refreshing = true;
             try {
-                const { data } = await axios.get('/api/v1/dashboard/clinic/stats', {
+                const { data } = await axios.get('/api/v1/dashboard/clinic/stats?summary=true', {
                     headers: { Authorization: `Bearer ${user.token}` }, signal: controller.signal,
                 });
                 setStats(data);
                 setError('');
             } catch {
                 if (!controller.signal.aborted) setError('Dashboard data could not be refreshed. Please try again.');
-            } finally { if (!controller.signal.aborted) setLoading(false); }
+            } finally { refreshing = false; if (!controller.signal.aborted) setLoading(false); }
         };
         void refresh();
         const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };

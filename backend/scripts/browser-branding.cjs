@@ -56,6 +56,7 @@ function stop(child) {
     };
     let api, chrome, socket, send, evaluate;
     const apiChecks = [];
+    const requestsStarted = [];
     const browserErrors = [];
     const network = [];
     process.once('uncaughtExceptionMonitor', () => { stop(chrome); stop(api); });
@@ -91,6 +92,7 @@ function stop(child) {
             } else if (message.method === 'Fetch.requestPaused') {
                 void (async () => {
                     const event = message.params, url = new URL(event.request.url);
+                    requestsStarted.push(url.pathname);
                     if (failLogos && /\/branding\/public\/[^/]+\/logo$/.test(url.pathname)) {
                         await send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 404, body: '' });
                         ++failedLogoRequests;
@@ -151,11 +153,33 @@ function stop(child) {
                 if (rects[0].width < 80) return false;
                 if (rects[1] && (rects[0].right > rects[1].left || Math.abs((rects[0].top + rects[0].height / 2) - (rects[1].top + rects[1].height / 2)) > 1)) return false;
                 if (Math.abs(rects[0].width / rects[0].height - images[0].naturalWidth / images[0].naturalHeight) > 0.03) return false;
+                const avatar = document.querySelector('header [data-account-avatar]');
+                const avatarImage = avatar?.querySelector('img');
+                if (!avatar || (${!!logo} ? !avatarImage || avatarImage.src !== new URL(${JSON.stringify(logo || '/')}, location.origin).href || !avatarImage.complete || avatarImage.naturalWidth === 0 || getComputedStyle(avatarImage).objectFit !== 'contain' : !!avatarImage || !avatar.textContent.trim())) return false;
+                if (document.querySelector('header a[href="/dashboard/branding"]')) return false;
                 const actions = document.querySelector('header button[aria-label="Settings"]').parentElement.getBoundingClientRect();
                 if (brand.getBoundingClientRect().right > actions.left || document.documentElement.scrollWidth > innerWidth) return false;
                 const theme = getComputedStyle(document.querySelector('.clinic-theme'));
                 return (!${!!primary} || theme.getPropertyValue('--brand-primary').trim() === ${JSON.stringify(primary || '')}) && (!${!!secondary} || theme.getPropertyValue('--brand-secondary').trim() === ${JSON.stringify(secondary || '')});
             })()`).catch(() => false), 'navbar logos, no clinic name, alignment and clinic colors');
+        };
+        const checkProfileAvatar = async logo => {
+            await until(() => evaluate(`(() => {
+                const avatar = document.querySelector('main [data-profile-avatar]');
+                if (!avatar) return false;
+                const image = avatar.querySelector('img');
+                return ${!!logo}
+                    ? !!image && image.src === new URL(${JSON.stringify(logo || '/')}, location.origin).href && image.complete && image.naturalWidth > 0 && getComputedStyle(image).objectFit === 'contain'
+                    : !image && !!avatar.textContent.trim();
+            })()`), 'clinic logo or initial fallback in My Profile');
+        };
+        const checkProfilePages = async logo => {
+            await evaluate("Array.from(document.querySelectorAll('[role=tab]')).find(tab => tab.textContent.includes('My Profile')).click()");
+            await checkProfileAvatar(logo);
+            await navigate('/dashboard/profile');
+            await checkProfileAvatar(logo);
+            await navigate('/dashboard/settings?tab=branding');
+            await until(() => evaluate("!!document.getElementById('brand-name')"), 'return from profile to branding');
         };
         // These passwords exist only in this disposable database and are never logged.
         const password = randomBytes(24).toString('hex');
@@ -165,12 +189,20 @@ function stop(child) {
         }
         const signIn = async id => {
             const account = await db.user.findUniqueOrThrow({ where: { id }, select: { email: true } });
+            await evaluate(`if (location.origin === ${JSON.stringify(frontend.origin)}) localStorage.removeItem('access_token')`);
             await navigate('/login');
             await until(() => evaluate("(() => { const form = document.querySelector('form'); return !!form && Object.keys(form).some(key => key.startsWith('__reactProps$') && typeof form[key]?.onSubmit === 'function'); })()"), 'login hydration');
             await evaluate("localStorage.removeItem('access_token')");
             await input('email', account.email); await input('password', password);
+            const startedBeforeLogin = requestsStarted.length;
             await evaluate("document.querySelector('form').requestSubmit()");
             await until(() => evaluate("location.pathname === '/dashboard' && !!document.querySelector('header')"), 'password sign-in');
+            expect(!requestsStarted.slice(startedBeforeLogin).includes('/api/v1/auth/me'), 'Password sign-in must reuse the verified profile instead of waiting for another /me call.');
+            const beforeFocus = requestsStarted.filter(route => route === '/api/v1/auth/me').length;
+            await evaluate("window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange'))");
+            await until(() => requestsStarted.filter(route => route === '/api/v1/auth/me').length > beforeFocus, 'session refresh after focus');
+            await sleep(100);
+            expect(requestsStarted.filter(route => route === '/api/v1/auth/me').length === beforeFocus + 1, 'Concurrent focus and visibility events must share one profile request.');
         };
         const brandingLink = "Array.from(document.querySelectorAll('header a[href=\"/dashboard/branding\"]')).find(link => link.getBoundingClientRect().width > 0)";
         const callApi = async (method, pathname, token, body) => {
@@ -201,15 +233,20 @@ function stop(child) {
             await evaluate(`(${checkbox}).click()`);
             await until(() => evaluate(`(${checkbox})?.checked && document.body.textContent.includes('Branding access granted')`), 'administrator grant');
             const adminToken = await evaluate("localStorage.getItem('access_token')");
+            await navigate(`/dashboard/branding?clinic=${clinicId}`);
+            await until(() => evaluate(`location.pathname === '/dashboard/settings' && new URLSearchParams(location.search).get('clinic') === ${JSON.stringify(clinicId)} && document.getElementById('branding-clinic')?.value === ${JSON.stringify(clinicId)} && !!document.getElementById('brand-name')`), 'administrator legacy link keeps the selected clinic');
             await signIn(managerId);
-            await until(() => evaluate(`!!(${brandingLink})`), 'authorized branding navigation');
+            expect(!await evaluate(`!!(${brandingLink})`), 'Branding must live in Settings instead of the navbar.');
             await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-            expect(await evaluate(`(() => { const rect = (${brandingLink}).getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth; })()`), 'Branding navigation is hidden on mobile.');
-            await evaluate(`(${brandingLink}).click()`);
+            await evaluate('document.querySelector(\'header button[aria-label="Settings"]\').click()');
+            await until(() => evaluate("location.pathname === '/dashboard/settings'"), 'Settings gear destination');
             await until(() => evaluate(`document.getElementById('brand-name')?.value === ${JSON.stringify(initialName)} && !document.getElementById('brand-name').matches(':disabled')`), 'authorized clinic settings');
             const managerToken = await evaluate("localStorage.getItem('access_token')");
             const savedBrand = async () => (await fetch(`${backendOrigin}/api/v1/branding/${clinicId}`, { headers: { Authorization: `Bearer ${managerToken}` } })).json();
+            const existingContent = await savedBrand();
             await checkNavbar(null, initialName);
+            await checkProfilePages(null);
+            expect(await evaluate("!document.getElementById('brand-info') && !document.getElementById('brand-services') && !document.querySelector('main a[href^=\"/patient/results\"]') && !Array.from(document.querySelectorAll('main summary')).some(element => /Live preview|Clinic information/.test(element.textContent))"), 'Removed branding sections must not appear in Settings.');
             expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, managerToken, { is_clinic_admin: true }) === 403, 'A manager must not self-grant.');
             expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, adminToken, { is_clinic_admin: false }) === 200, 'Administrator must be able to revoke permission.');
             await evaluate("window.dispatchEvent(new Event('focus'))");
@@ -218,13 +255,9 @@ function stop(child) {
             expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, adminToken, { is_clinic_admin: true }) === 200, 'Administrator must be able to restore permission.');
             await evaluate("window.dispatchEvent(new Event('focus'))");
             await until(() => evaluate("!document.getElementById('brand-name').matches(':disabled')"), 'permission grant refresh without signing out');
-            await input('brand-name', `${name} Preview`);
             await input('primary_color', primary);
             await input('secondary_color', secondary);
-            await until(() => evaluate(`Array.from(document.querySelectorAll('.clinic-theme')).some(element => element.textContent.includes(${JSON.stringify(`${name} Preview`)}) && getComputedStyle(element).getPropertyValue('--brand-primary').trim() === ${JSON.stringify(primary)})`), 'live preview');
             await input('brand-name', name);
-            await input('brand-info', `Information for ${name}`);
-            await input('brand-services', 'Primary care\nLaboratory testing');
             expect(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Branding settings overflow a mobile viewport.');
             logoBytes = Buffer.from(index ? 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' : 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aM1sAAAAASUVORK5CYII=', 'base64');
             const logoFile = path.join(directory, `logo-${index}.png`);
@@ -238,10 +271,13 @@ function stop(child) {
             await checkNavbar((await savedBrand()).logo_url, name, primary, secondary);
             await reload();
             await until(() => evaluate(`document.getElementById('brand-name')?.value === ${JSON.stringify(name)} && document.getElementById('primary_color')?.value === ${JSON.stringify(primary)}`), 'reload saved branding');
-            expect(await evaluate(`document.getElementById('secondary_color').value === ${JSON.stringify(secondary)} && document.getElementById('brand-info').value === ${JSON.stringify(`Information for ${name}`)} && document.getElementById('brand-services').value === ${JSON.stringify('Primary care\nLaboratory testing')}`), 'All branding fields must survive reload.');
+            expect(await evaluate(`document.getElementById('secondary_color').value === ${JSON.stringify(secondary)}`), 'Saved secondary color must survive reload.');
+            const preservedContent = await savedBrand();
+            expect(preservedContent.information === existingContent.information && JSON.stringify(preservedContent.services) === JSON.stringify(existingContent.services), 'Saving identity and colors must preserve existing hidden clinic information and services.');
             expect(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Saved branding overflows a mobile viewport.');
             await until(() => evaluate("Array.from(document.images).some(image => image.src.includes('/branding/public/') && image.complete && image.naturalWidth > 0)"), 'saved logo');
             await checkNavbar((await savedBrand()).logo_url, name, primary, secondary);
+            await checkProfilePages((await savedBrand()).logo_url);
             const originalLogo = await db.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { branding_logo: true } });
             // Replace, remove and re-upload through the real form, not direct DB writes.
             const setLogo = async bytes => {
@@ -256,6 +292,7 @@ function stop(child) {
                 await until(() => evaluate("document.body.textContent.includes('Clinic branding saved.')"), 'logo change saved');
                 const expectedLogo = (await savedBrand()).logo_url;
                 await checkNavbar(expectedLogo, name, primary, secondary);
+                await checkProfilePages(expectedLogo);
                 await reload();
                 await until(() => evaluate(`document.getElementById('brand-name')?.value === ${JSON.stringify(name)}`), 'logo change reloaded');
                 await checkNavbar(expectedLogo, name, primary, secondary);
@@ -275,6 +312,7 @@ function stop(child) {
             await reload();
             await until(() => failedLogoRequests > failuresBefore && evaluate(`document.getElementById('brand-name')?.value === ${JSON.stringify(name)}`), 'actual missing-logo response and loaded settings');
             await checkNavbar(null, name, primary, secondary);
+            await checkProfilePages(null);
             failLogos = false;
             await setLogo(fs.readFileSync(logoFile));
             await saveAndReload();
@@ -285,6 +323,11 @@ function stop(child) {
                 const navbar = await send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height: 240, scale: 1 } });
                 fs.writeFileSync(path.join(artifacts, `clinic-${index ? 'b' : 'a'}-navbar-${width}.png`), Buffer.from(navbar.data, 'base64'));
             }
+            await evaluate("Array.from(document.querySelectorAll('[role=tab]')).find(tab => tab.textContent.includes('My Profile')).click()");
+            await until(() => evaluate("document.body.innerText.includes('Profile Details')"), 'existing profile settings tab');
+            await checkProfileAvatar(currentLogo);
+            await evaluate("Array.from(document.querySelectorAll('[role=tab]')).find(tab => tab.textContent.includes('Clinic branding')).click()");
+            await until(() => evaluate(`document.getElementById('brand-name')?.value === ${JSON.stringify(name)}`), 'return to saved branding settings');
             const screen = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
             fs.writeFileSync(path.join(artifacts, `clinic-${index ? 'b' : 'a'}-settings.png`), Buffer.from(screen.data, 'base64'));
             await navigate('/dashboard');
@@ -305,7 +348,7 @@ function stop(child) {
             const patientScreen = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
             fs.writeFileSync(path.join(artifacts, `clinic-${index ? 'b' : 'a'}-patient.png`), Buffer.from(patientScreen.data, 'base64'));
             await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
-            console.log(`Browser checks passed for synthetic clinic ${index ? 'B' : 'A'}: sign-in, permission grant/revoke, Frigo-first navbar without clinic text, immediate logo upload/replacement/removal and reload, missing-logo fallback/recovery, correct clinic colors, 320/390/1440px layouts, settings, patient branding and access.`);
+            console.log(`Browser checks passed for synthetic clinic ${index ? 'B' : 'A'}: login with no extra profile request, one shared focus/visibility refresh, Settings branding without preview/portal/information sections, hidden data preserved, clinic logo in both My Profile pages and navbar, upload/replacement/removal and reload, missing-logo fallback/recovery, permission grant/revoke, 320/390/1440px layouts, patient branding and access.`);
         }
     } catch (error) {
         console.error('Browser API checks: ' + JSON.stringify(apiChecks));
@@ -320,11 +363,20 @@ function stop(child) {
         }
         throw error;
     } finally {
+        // Close the actual browser through CDP: on Windows the launcher PID can
+        // exit before Chrome's profile-owning processes have finished.
+        if (socket?.readyState === WebSocket.OPEN) await new Promise(resolve => {
+            const timer = setTimeout(resolve, 20000);
+            socket.addEventListener('close', () => { clearTimeout(timer); resolve(); }, { once: true });
+            // Chrome may close the connection before replying, so wait for close
+            // rather than registering a request that would leave a pending timer.
+            socket.send(JSON.stringify({ id: 2147483647, method: 'Browser.close' }));
+        });
         socket?.close();
         stop(chrome); stop(api);
         await db.$disconnect();
         // The directory is generated by mkdtemp under the OS temp root.
         const absolute = path.resolve(directory);
-        if (absolute.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(absolute).startsWith('frigo-browser-test-')) fs.rmSync(absolute, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+        if (absolute.startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(absolute).startsWith('frigo-browser-test-')) await fs.promises.rm(absolute, { recursive: true, force: true, maxRetries: 15, retryDelay: 200 });
     }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

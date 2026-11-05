@@ -84,10 +84,19 @@ describe('Email verification authentication', () => {
         await expect(service.validateUser('admin@frigolabs.com', 'fixture-password')).rejects.toThrow(ForbiddenException);
     });
     it('retains normal login for verified users without leaking password hashes', async () => {
-        users.findOne.mockResolvedValue({ id: 'fixture', email: 'clinic@gmail.com', role: 'CLINIC_USER', email_verified: true, password_hash: await bcrypt.hash('fixture-password', 4) });
+        users.findOne.mockResolvedValue({ id: 'fixture', name: 'Fixture staff', email: 'clinic@gmail.com', role: 'CLINIC_USER', clinic_id: 'fixture-clinic', clinic: { name: 'Fixture clinic', status: 'Active' }, is_clinic_admin: true, email_verified: true, password_hash: await bcrypt.hash('fixture-password', 4), internal_notes: 'private fixture field' });
         const user = await service.validateUser(' clinic@gmail.com ', 'fixture-password');
         expect(user).not.toHaveProperty('password_hash');
-        expect((await service.login(user)).access_token).toBe('fixture-token');
+        const session = await service.login(user);
+        expect(session.access_token).toBe('fixture-token');
+        expect(session.user).toEqual({ id: 'fixture', name: 'Fixture staff', email: 'clinic@gmail.com', role: 'CLINIC_USER', clinic_id: 'fixture-clinic', clinic_name: 'Fixture clinic', email_verified: true, is_clinic_admin: true });
+        expect(session.user).not.toHaveProperty('password_hash');
+        expect(session.user).not.toHaveProperty('internal_notes');
+    });
+    it('rejects verified staff without an active clinic before returning a login profile', async () => {
+        users.findOne.mockResolvedValue({ id: 'unassigned-fixture', role: 'CLINIC_USER', clinic_id: null, clinic: null, email_verified: true, password_hash: await bcrypt.hash('fixture-password', 4) });
+        await expect(service.validateUser('clinic@gmail.com', 'fixture-password')).rejects.toThrow('active clinic membership');
+        expect(jwt.sign).not.toHaveBeenCalled();
     });
     it('checks verification in the database even when a JWT claims admin access', async () => {
         const strategy = new JwtStrategy({ user: { findUnique: jest.fn().mockResolvedValue({ email_verified: false }) } } as any);

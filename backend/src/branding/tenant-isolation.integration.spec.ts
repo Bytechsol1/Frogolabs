@@ -46,6 +46,7 @@ const integration = process.env.TENANT_TEST_DATABASE_URL
 integration('Two-clinic HTTP isolation with real PostgreSQL', () => {
   let app: INestApplication;
   let db: PrismaClient;
+  let queryCount = 0;
   let directory: string;
   let previousCwd: string;
   let jwt: JwtService;
@@ -93,7 +94,9 @@ integration('Two-clinic HTTP isolation with real PostgreSQL', () => {
     process.env.JWT_SECRET = secret;
     process.env.TERRA_ENVIRONMENT = 'sandbox';
     process.env.TERRA_SHOW_SANDBOX_DATA = 'true';
-    db = new PrismaClient({ datasourceUrl: url.toString() });
+    const client = new PrismaClient({ datasourceUrl: url.toString(), log: [{ emit: 'event', level: 'query' }] });
+    client.$on('query', () => { queryCount++; });
+    db = client;
     await db.$connect();
     // A fresh DB is mandatory; never erase an existing fixture or user database.
     if (await db.clinic.count())
@@ -411,6 +414,29 @@ integration('Two-clinic HTTP isolation with real PostgreSQL', () => {
         .expect(200);
     },
   );
+
+  it('loads dashboard summaries with fewer queries and the same clinic-scoped data', async () => {
+    for (const index of [0, 1]) {
+      const before = queryCount;
+      const full = await request(app.getHttpServer<Server>()).get('/api/v1/dashboard/clinic/stats').set('Authorization', own(index)).expect(200);
+      const fullQueries = queryCount - before;
+      const summaryBefore = queryCount;
+      const summary = await request(app.getHttpServer<Server>()).get(`/api/v1/dashboard/clinic/stats?summary=true&clinic_id=${clinics[1 - index]}`).set('Authorization', own(index)).expect(200);
+      const summaryQueries = queryCount - summaryBefore;
+      expect(summary.body.kpi).toEqual({ totalPatients: full.body.kpi.totalPatients, resultsReady: full.body.kpi.resultsReady, awaitingTestOrders: full.body.kpi.awaitingTestOrders });
+      expect(summary.body.tables).toEqual(full.body.tables);
+      expect(summaryQueries).toBeLessThan(fullQueries);
+      await request(app.getHttpServer<Server>()).get('/api/v1/dashboard/admin/stats?summary=true').set('Authorization', own(index)).expect(403);
+    }
+    const before = queryCount;
+    const full = await request(app.getHttpServer<Server>()).get('/api/v1/dashboard/admin/stats').set('Authorization', admin()).expect(200);
+    const fullQueries = queryCount - before;
+    const summaryBefore = queryCount;
+    const summary = await request(app.getHttpServer<Server>()).get('/api/v1/dashboard/admin/stats?summary=true').set('Authorization', admin()).expect(200);
+    expect(summary.body.kpi).toEqual({ totalClinics: full.body.kpi.totalClinics, resultsReady: full.body.kpi.resultsReady, completedWorkflows: full.body.kpi.completedWorkflows });
+    expect(summary.body.tables.activeClinics).toEqual(full.body.tables.activeClinics);
+    expect(queryCount - summaryBefore).toBeLessThan(fullQueries);
+  });
 
   it('binds patient report access to both the result and the clinic', async () => {
     const verified = await request(app.getHttpServer<Server>())

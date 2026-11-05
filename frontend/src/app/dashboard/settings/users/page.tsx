@@ -33,13 +33,13 @@ export default function UserManagementPage() {
             if (!response.ok) throw new Error((await response.json()).message || 'Permission could not be saved.');
             const saved = await response.json();
             setUsers(current => current.map(row => row.id === staff.id ? { ...row, is_clinic_admin: saved.is_clinic_admin } : row));
-            setMessage(saved.is_clinic_admin ? `Branding access granted to ${staff.name}. They can open Clinic Branding after signing in or returning to their dashboard tab.` : `Branding access removed from ${staff.name}.`);
+            setMessage(saved.is_clinic_admin ? `Branding access granted to ${staff.name}. They can open Settings → Clinic branding after signing in or returning to their dashboard tab.` : `Branding access removed from ${staff.name}.`);
         } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save permission.'); }
         finally { setBusy(null); }
     };
     if (isLoading) return <p role="status">Loading account permissions…</p>;
     if (!isAdmin) return <p role="alert">Platform administrator access is required.</p>;
-    return <div className="space-y-5"><h1 className="text-2xl font-bold">Clinic administrators</h1><p className="text-sm text-slate-600">Grant branding management only to staff who already belong to the intended clinic.</p><Link href="/dashboard/branding" className="text-sm underline">Manage clinic branding</Link>
+    return <div className="space-y-5"><h1 className="text-2xl font-bold">Clinic administrators</h1><p className="text-sm text-slate-600">Grant branding management only to staff who already belong to the intended clinic.</p><Link href="/dashboard/settings?tab=branding" className="text-sm underline">Manage clinic branding</Link>
         {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">{error}</p>}
         {message && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">{message}</p>}
         {loading && <p role="status">Loading clinic staff…</p>}

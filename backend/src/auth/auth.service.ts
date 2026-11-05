@@ -27,9 +27,7 @@ export class AuthService {
         if (user.clinic?.status === 'Inactive') {
             throw new UnauthorizedException('Your clinic account has been disabled. Please contact Frigo Labs.');
         }
-        this.requireVerified(user);
-        const { password_hash, clinic, ...result } = user;
-        return result;
+        return sessionProfile(user);
     }
 
     private requireVerified(user: { email_verified: boolean }) {
@@ -42,6 +40,14 @@ export class AuthService {
         return {
             access_token: this.jwtService.sign(payload),
             refresh_token: this.jwtService.sign(payload, { expiresIn: '7d' }),
+            // Reuse the password-verified lookup instead of requiring another /me
+            // round trip before the dashboard can render. Never serialize the row.
+            user: {
+                id: user.id, email: user.email, name: user.name, role: user.role,
+                clinic_id: user.clinic_id ?? null,
+                clinic_name: user.clinic_name ?? user.clinic?.name ?? null,
+                email_verified: user.email_verified, is_clinic_admin: user.is_clinic_admin === true,
+            },
         };
     }
 

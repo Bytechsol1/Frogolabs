@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabReportNotifications } from "@/components/LabReportNotifications";
-import { NavbarBrand, BrandSurface, useBrandTitle } from '@/components/ClinicBrand';
+import { NavbarBrand, ClinicAvatar, BrandSurface, useBrandTitle } from '@/components/ClinicBrand';
 import { useBranding } from '@/context/BrandingContext';
 import {
     LayoutDashboard,
@@ -33,8 +33,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const pathname = usePathname();
     const [showSandboxNotice, setShowSandboxNotice] = useState(false);
 
-    // Permissions are read from the server again when navigating inside the dashboard.
-    useEffect(() => { void refreshUser(); }, [pathname, refreshUser]);
+    // AuthProvider already verifies the initial session (or receives the verified
+    // login profile). Recheck permissions on later navigation, without a second
+    // identical request while opening the dashboard for the first time.
+    const previousPath = useRef(pathname);
+    useEffect(() => {
+        if (previousPath.current === pathname) return;
+        previousPath.current = pathname;
+        void refreshUser();
+    }, [pathname, refreshUser]);
 
     useEffect(() => {
         if (!user?.token) return;
@@ -56,11 +63,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const menuItems = [
         { title: "Dashboard", url: "/dashboard", roles: ["ADMIN", "CLINIC_USER"], icon: LayoutDashboard },
         { title: "Clinics", url: "/dashboard/clinics", roles: ["ADMIN"], icon: Building2 },
-        { title: 'Clinic Branding', url: '/dashboard/branding', roles: ['ADMIN'], icon: Settings },
         { title: "Patients", url: "/dashboard/patients", roles: ["ADMIN", "CLINIC_USER"], icon: Users },
         { title: "Sessions", url: "/dashboard/workflows", roles: ["ADMIN", "CLINIC_USER"], icon: Activity },
         { title: "Lab Results", url: "/dashboard/lab-results", roles: ["ADMIN", "CLINIC_USER"], icon: FlaskConical },
-        ...(user?.is_clinic_admin ? [{ title: 'Clinic Branding', url: '/dashboard/branding', roles: ['CLINIC_USER'], icon: Settings }] : []),
     ];
 
     const filteredItems = menuItems.filter(item => item.roles.includes(user?.role || ''));
@@ -125,7 +130,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <button
                             type="button"
                             aria-label="Settings"
-                            onClick={() => router.push(user?.role === 'ADMIN' ? '/dashboard/settings' : '/dashboard/profile')}
+                            onClick={() => router.push('/dashboard/settings')}
                             className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 text-[#080e1e] flex items-center justify-center transition-colors border border-[#ded8c4]/50"
                         >
                             <Settings className="w-4 h-4" />
@@ -134,8 +139,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* User Dropdown Profile Pill */}
                         <DropdownMenu>
                             <DropdownMenuTrigger aria-label="Account menu" className="flex items-center gap-2 bg-[#e4dec3]/40 hover:bg-[#e4dec3]/70 p-1 sm:pr-3 rounded-full transition-colors outline-none border border-[#ded8c4]/50">
-                                <div className="w-7 h-7 rounded-full bg-[#080e1e] text-[#cbb28d] font-bold text-xs flex items-center justify-center border border-[#cbb28d]/30">
-                                    {user?.name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
+                                <div data-account-avatar className="w-7 h-7 shrink-0 overflow-hidden rounded-full bg-[#080e1e] text-[#cbb28d] font-bold text-xs flex items-center justify-center border border-[#cbb28d]/30">
+                                    <ClinicAvatar branding={branding} initial={(user.name?.charAt(0) || user.email?.charAt(0) || 'U').toUpperCase()} />
                                 </div>
                                 <span className="text-xs font-bold text-[#080e1e] max-w-[100px] truncate hidden sm:inline-block">
                                     {user?.name?.split(' ')[0] || user?.email?.split('@')[0]}

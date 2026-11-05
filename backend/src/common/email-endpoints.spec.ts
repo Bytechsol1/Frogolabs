@@ -24,7 +24,7 @@ import { TerraService } from '../terra/terra.service';
 
 describe('email validation at HTTP boundaries (no database or mail delivery)', () => {
     let app: INestApplication;
-    const identity = { id: 'fixture-user', name: 'Fixture', email: 'test@gmail.com', email_verified: true, role: 'CLINIC_USER', clinic_id: 'fixture-clinic' };
+    const identity = { id: 'fixture-user', name: 'Fixture', email: 'test@gmail.com', email_verified: true, is_clinic_admin: false, role: 'CLINIC_USER', clinic_id: 'fixture-clinic', clinic: { name: 'Fixture clinic', status: 'Active' } };
     const db = {
         $queryRaw: jest.fn().mockResolvedValue([{ attempts: 1, resets_at: new Date(Date.now() + 60000) }]),
         authRateLimit: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },

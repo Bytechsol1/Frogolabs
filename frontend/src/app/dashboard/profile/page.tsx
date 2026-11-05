@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { User, Mail, Shield, Pencil, Check, X, Loader2, Bell, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useBranding } from '@/context/BrandingContext';
+import { ClinicAvatar } from '@/components/ClinicBrand';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { prepareEmailVerification } from '@/lib/email-verification';
@@ -19,6 +21,7 @@ import { useReportBadgePreference } from '@/lib/use-report-badge-preference';
 
 export default function ProfilePage() {
     const { user, login, logout } = useAuth();
+    const { branding } = useBranding();
     const [showReportBadge, setShowReportBadge] = useReportBadgePreference(user?.id);
     const [preferenceFeedback, setPreferenceFeedback] = useState<{ message: string; error: boolean } | null>(null);
     const router = useRouter();
@@ -97,7 +100,7 @@ export default function ProfilePage() {
                         </div>
                     </div>
                     <div className="relative -mt-12 mx-auto flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-[6px] border-white bg-[#f2ede2] shadow-sm">
-                        <span className="flex h-full w-full items-center justify-center rounded-full border border-[#cbb28d]/60 text-3xl font-semibold text-[#8c7657]">{initials}</span>
+                        <span data-profile-avatar className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-[#cbb28d]/60 text-3xl font-semibold text-[#8c7657]"><ClinicAvatar branding={branding} initial={initials} /></span>
                     </div>
                     <div className="px-6 pb-7 pt-5 text-center sm:px-7">
                         <h2 className="break-words text-2xl font-bold tracking-tight text-[#080e1e]">{user?.name || 'Your profile'}</h2>

@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, UseGuards, Request, Query } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -11,13 +11,13 @@ export class DashboardController {
 
     @Get('admin/stats')
     @Roles('ADMIN')
-    async getAdminStats() {
-        return this.dashboardService.getAdminStats();
+    async getAdminStats(@Query('summary') summary?: string) {
+        return this.dashboardService.getAdminStats(summary === 'true');
     }
 
     @Get('clinic/stats')
     @Roles('CLINIC_USER')
-    async getClinicStats(@Request() req) {
-        return this.dashboardService.getClinicStats(req.user.clinic_id);
+    async getClinicStats(@Request() req, @Query('summary') summary?: string) {
+        return this.dashboardService.getClinicStats(req.user.clinic_id, summary === 'true');
     }
 }

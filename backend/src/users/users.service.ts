@@ -22,7 +22,7 @@ export class UsersService {
         email = requireLoginEmail(email);
         return this.prisma.user.findFirst({
             where: { email: { equals: email.trim().toLowerCase(), mode: 'insensitive' } },
-            include: { clinic: { select: { id: true, status: true } } },
+            include: { clinic: { select: { id: true, status: true, name: true } } },
         });
     }
 

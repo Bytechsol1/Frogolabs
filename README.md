@@ -88,11 +88,17 @@ If credentials are missing or the mail server rejects the message, registration 
 
 ## Architecture notes
 
+### Dashboard loading
+
+Successful password login returns a whitelisted, verified session profile alongside the tokens. The frontend can open the dashboard without another `/auth/me` round trip; older backend responses still fall back to fetching the profile. Concurrent focus/visibility refreshes share one in-flight profile request, and dashboard stats refreshes do not overlap. Permissions are still refreshed on later navigation/focus and checked against the database by protected API routes.
+
+The dashboard requests `/dashboard/admin/stats?summary=true` or `/dashboard/clinic/stats?summary=true`. These read only the metrics and tables shown on the page: four dashboard reads instead of nine for the administrator and six for a clinic. Calls without `summary=true` retain the full response. Independent reads run without a serial array transaction; no patient data cache or schema migration is introduced. Disposable two-clinic tests compare summary data and SQL query counts with the full response and verify the same authorization rules.
+
 ### Clinic branding and tenant isolation
 
-Clinic administrators can manage their clinic name, logo, primary/secondary colors, public information, and service descriptions at `/dashboard/branding`. Settings include a live preview, color contrast handling, and PNG/JPEG/WebP logo uploads up to 2 MB. Staff dashboards and clinic-specific sign-in and patient-result pages share the saved theme. Platform administration keeps Frigo Flow branding.
+Clinic administrators can manage their clinic name, logo and primary/secondary colors under the dashboard **Settings** gear → **Clinic branding** (`/dashboard/settings?tab=branding`). Only the brand identity and colors card is shown; live preview, clinic portal links and information/services controls have been removed. Saving branding preserves existing information and services in the database. PNG/JPEG/WebP logo uploads are limited to 2 MB. Old `/dashboard/branding` links redirect to Settings and preserve the selected clinic. Staff dashboards and clinic-specific sign-in and patient-result pages share the saved theme. Platform administration keeps Frigo Flow branding.
 
-Dashboard navbars show the existing Frigo Flow logo first and the current clinic's uploaded logo alongside it, without clinic-name text. Saving a logo upload, replacement or removal refreshes the navbar immediately. Clinics without an uploaded logo, or with a logo that cannot load, show only the Frigo Flow logo. Clinic names remain in settings and patient pages.
+Dashboard navbars show the existing Frigo Flow logo first and the current clinic's uploaded logo alongside it, without clinic-name text. The same clinic logo appears in the account avatar, Settings → My Profile, and the standalone account profile page. Saving a logo upload, replacement or removal refreshes the shared branding immediately. A missing or unavailable logo falls back to the user's initial in profile avatars and leaves only the Frigo Flow logo on the left. Clinic names remain in settings and patient pages. Branding has no separate dashboard navigation item.
 
 For Supabase or another remote PostgreSQL database, logo files are stored as binary data in the private `ClinicLogo` table, linked to their clinic. The `Clinic` table stores the name, colors, information, services and logo filename. Upload/replacement and removal update the image and clinic reference in one transaction; the existing backend image endpoint serves validated image bytes. Remote databases never fall back to local logo files. `CLINIC_LOGO_STORAGE` can explicitly select `database` for tests or development; existing local-only databases retain filesystem compatibility. Keep `DATABASE_URL` and `DIRECT_URL` in the server's private environment. `docs/supabase-live-upgrade.sql` is the reviewed, one-time upgrade from the inspected legacy Supabase schema; it adds the missing application tables and branding columns without dropping existing data. Moving local records into an existing live project is a separate, explicitly authorized operation.
 
@@ -110,13 +116,13 @@ npm run dev
 
 For a fresh local database, first use the existing `npm run db:setup`, then `npm run db:branding --workspace=backend` to install the ownership triggers. The local migration helper refuses remote databases. The reviewed migration for other environments is `backend/prisma/migrations/202610280001_clinic_branding/migration.sql`; this implementation does not deploy it to production. Stop local backend processes before client generation if Windows reports a locked Prisma engine DLL.
 
-Existing users are **not** automatically promoted. A platform administrator should click the dashboard **Settings** gear, then **Branding permissions** (`/dashboard/settings/users`), and explicitly grant **Branding administrator** to a staff member already associated with the intended clinic. Managers with that permission see **Clinic Branding** in the dashboard navigation and can edit only their own clinic. Settings also has a direct **Clinic branding** link for platform administrators. Permissions refresh when returning to the app or navigating inside the dashboard, so an open session picks up grants and revocations; the API checks the current database permission on every request. Newly registered clinic owners receive that permission only for the clinic created by their registration. Public registration does not join an existing clinic.
+Existing users are **not** automatically promoted. A platform administrator should click the dashboard **Settings** gear, then **Branding permissions** (`/dashboard/settings/users`), and explicitly grant **Branding administrator** to a staff member already associated with the intended clinic. Managers with that permission open **Settings → Clinic branding** and can edit only their own clinic. Staff without that permission have read-only branding controls. Platform administrators can select a clinic within the same Settings tab. Permissions refresh when returning to the app or navigating inside the dashboard, so an open session picks up grants and revocations; the API checks the current database permission on every request. Newly registered clinic owners receive that permission only for the clinic created by their registration. Public registration does not join an existing clinic.
 
 To review:
 
-1. Sign in as a platform administrator, select a clinic at `/dashboard/branding`, and grant its manager permission where appropriate.
-2. Sign in as that clinic manager. Edit its settings, preview colors/logo, save, and reload. Service descriptions do not create Terra products or clinical results.
-3. Use the **Patient results portal** link on the branding page. It carries an explicit clinic context using the existing clinic identifier, without custom domains. The patient entry page shows the clinic name, logo, and colors; clinic information and service descriptions remain saved in branding settings but are hidden on that page. No patient information is returned by the public branding API.
+1. Sign in as a platform administrator, open **Settings → Clinic branding**, select a clinic, and grant its manager permission where appropriate.
+2. Sign in as that clinic manager. Edit the clinic name, colors and logo, save, and reload. Open My Profile to verify the saved logo there too.
+3. The existing patient page at `/patient/results?clinic=<clinic-id>` carries an explicit clinic context without custom domains. It shows the clinic name, logo and colors. Existing clinic information and service descriptions remain stored but are hidden in both branding settings and the patient entry page. No patient information is returned by the public branding API.
 4. A patient still needs the result identifier and its matching, unexpired access code. Changing the clinic link never changes authorization. A valid code for a different result or clinic is rejected.
 5. Repeat for a second clinic and check the separate theme and records. Clinic staff cannot select another clinic through URL or request-body IDs. Platform administrators retain clinic-management access.
 
@@ -134,17 +140,15 @@ npm run build:backend
 npm run build:frontend
 ```
 
-The tenant test command creates a randomly named **disposable local database**, applies the complete schema and ownership migration, and exercises two synthetic clinics through real HTTP controllers and PostgreSQL. It removes only that database afterward. It does not enable the existing `AUTH_DB_TESTS` suites against application data. For optional headless Chrome checks, build the backend, run a local Frigo frontend, then:
+The tenant test command creates a fresh **disposable PostgreSQL container** bound only to loopback, loads the complete schema and exercises two synthetic clinics through real HTTP controllers and PostgreSQL. It removes its container afterward and never loads application environment files or contacts Supabase. It does not enable the existing `AUTH_DB_TESTS` suites against application data. For optional headless Chrome checks, build the backend and frontend first, then:
 
 ```powershell
 $env:TENANT_BROWSER_TESTS = '1'
-$env:FRIGO_TEST_FRONTEND = 'http://localhost:3002'
 npm run test:tenants --workspace=backend
 Remove-Item Env:TENANT_BROWSER_TESTS
-Remove-Item Env:FRIGO_TEST_FRONTEND
 ```
 
-Browser checks use a temporary profile and fixture backend; API traffic is redirected to the disposable database. They sign in with passwords generated only for the disposable fixtures, grant manager access through Settings, check live grant/revoke permission refresh and unauthorized restrictions, and verify mobile navigation, live preview, logo upload/replacement/removal, every branding field after save/reload, staff/dashboard/sign-in branding, patient result access, and mobile layout for both clinics. Screenshots are saved under the ignored `.devtmp/branding-review` directory. `FRIGO_TEST_BROWSER` optionally selects a locally installed Chromium executable.
+Browser checks start a separate frontend on an unused loopback port and use a temporary browser profile and fixture backend; API traffic is redirected to the disposable database. They sign in with passwords generated only for the disposable fixtures, grant manager access through Settings, check live grant/revoke permission refresh and unauthorized restrictions, and verify the Settings gear, removed sections, legacy redirects, navbar and both My Profile avatars, logo upload/replacement/removal, saved colors and preserved hidden information after reload, staff/dashboard/sign-in branding, patient result access, and 320/390/1440px layouts for both clinics. Screenshots are saved under the ignored `.devtmp/branding-review` directory. `FRIGO_TEST_BROWSER` optionally selects a locally installed Chromium executable.
 
 These changes enforce application/Prisma authorization and database ownership triggers; they do not configure PostgreSQL RLS or browser database access. They do not establish HIPAA compliance. Production hosting, private network/database access, TLS, encryption, durable storage/backups, audit/incident processes, provider BAAs, and legal/operational requirements need separate verification.
 

@@ -23,28 +23,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<AuthUser | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const profileRequest = useRef(0);
+    const inFlightProfile = useRef<{ token: string; promise: Promise<void> } | null>(null);
 
     const fetchProfile = useCallback(async (token: string, propagateError = false) => {
-        const request = ++profileRequest.current;
-        try {
-            const res = await axios.get<Omit<AuthUser, 'token'>>('/api/v1/auth/me', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (request === profileRequest.current && localStorage.getItem('access_token') === token) {
-                setUser({ ...res.data, token });
-                if (res.data.email_verified) clearEmailVerification(res.data.email);
-            }
-        } catch (err) {
-            // A temporary network failure must not discard an otherwise valid session.
-            if (axios.isAxiosError(err) && [401, 403].includes(err.response?.status ?? 0)
-                && request === profileRequest.current && localStorage.getItem('access_token') === token) {
-                localStorage.removeItem('access_token');
-                setUser(null);
-            }
-            if (propagateError) throw err;
-        } finally {
-            if (request === profileRequest.current) setIsLoading(false);
+        if (inFlightProfile.current?.token === token) {
+            const pending = inFlightProfile.current.promise;
+            return propagateError ? pending : pending.catch(() => {});
         }
+        const request = ++profileRequest.current;
+        const promise: Promise<void> = (async () => {
+            try {
+                const res = await axios.get<Omit<AuthUser, 'token'>>('/api/v1/auth/me', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (request === profileRequest.current && localStorage.getItem('access_token') === token) {
+                    setUser({ ...res.data, token });
+                    if (res.data.email_verified) clearEmailVerification(res.data.email);
+                }
+            } catch (err) {
+                // A temporary network failure must not discard a valid session.
+                if (axios.isAxiosError(err) && [401, 403].includes(err.response?.status ?? 0)
+                    && request === profileRequest.current && localStorage.getItem('access_token') === token) {
+                    localStorage.removeItem('access_token');
+                    setUser(null);
+                }
+                throw err;
+            } finally {
+                if (request === profileRequest.current) setIsLoading(false);
+            }
+        })().finally(() => {
+            if (inFlightProfile.current?.promise === promise) inFlightProfile.current = null;
+        });
+        inFlightProfile.current = { token, promise };
+        return propagateError ? promise : promise.catch(() => {});
     }, []);
 
     const refreshUser = useCallback(async () => {
@@ -52,6 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token) await fetchProfile(token);
         else {
             ++profileRequest.current;
+            inFlightProfile.current = null;
             setUser(null);
             setIsLoading(false);
         }
@@ -89,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (profile !== undefined && !authenticated) throw new Error('The authenticated profile is invalid.');
         // Supersede older profile requests before installing this newly authenticated session.
         ++profileRequest.current;
+        inFlightProfile.current = null;
         localStorage.setItem('access_token', token);
         if (authenticated) {
             setUser({ ...authenticated, token });
@@ -101,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const logout = (redirectTo?: string) => {
         ++profileRequest.current;
+        inFlightProfile.current = null;
         localStorage.removeItem('access_token');
         if (redirectTo) {
             // Leave the dashboard document before its signed-out route guard runs.

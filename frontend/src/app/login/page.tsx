@@ -58,7 +58,7 @@ export default function LoginPage() {
         setLoading(true);
         try {
             const response = await axios.post('/api/v1/auth/login', { email: normalizeEmail(email), password, ...(clinicId ? { clinic_id: clinicId } : {}) });
-            await login(response.data.access_token);
+            await login(response.data.access_token, response.data.user);
             router.push('/dashboard');
         } catch (err: any) {
             const msg = err.response?.data?.message;
