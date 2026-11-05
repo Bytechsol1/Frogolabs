@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
 import { Palette, Upload } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -27,7 +26,7 @@ export function ClinicBrandingSettings() {
     const [saving, setSaving] = useState(false);
     const fileInput = useRef<HTMLInputElement>(null);
     const isAdmin = user?.role === 'ADMIN';
-    const canManage = isAdmin || (user?.role === 'CLINIC_USER' && user?.is_clinic_admin === true && clinicId === user?.clinic_id);
+    const canManage = isAdmin || (user?.role === 'CLINIC_USER' && clinicId === user?.clinic_id);
     const token = user?.token as string | undefined;
 
     useEffect(() => {
@@ -103,13 +102,12 @@ export function ClinicBrandingSettings() {
     const previewLogo = removeLogo ? null : preview || brand?.logo_url;
     return <div className="space-y-6 pb-8">
         <div><h1 className="text-3xl font-bold">Clinic branding</h1><p className="mt-2 text-sm text-slate-600">Customize the experience your staff and patients see.</p></div>
-        {isAdmin && <div className="flex flex-wrap items-center gap-3"><Label htmlFor="branding-clinic">Clinic</Label><select id="branding-clinic" disabled={saving} value={clinicId} onChange={event => setClinicId(event.target.value)} className="rounded-xl border bg-white p-3 text-sm"><option value="" disabled>Select a clinic</option>{clinics.map(clinic => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select><Link href="/dashboard/settings/users" className="text-sm underline">Manage clinic administrators</Link></div>}
+        {isAdmin && <div className="flex flex-wrap items-center gap-3"><Label htmlFor="branding-clinic">Clinic</Label><select id="branding-clinic" disabled={saving} value={clinicId} onChange={event => setClinicId(event.target.value)} className="rounded-xl border bg-white p-3 text-sm"><option value="" disabled>Select a clinic</option>{clinics.map(clinic => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select></div>}
         {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
         {message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">{message}</p>}
         {brand && <div className="max-w-3xl min-w-0 space-y-6">
             <form onSubmit={save} className="min-w-0 space-y-5 rounded-2xl border bg-white p-4 shadow-sm sm:p-6">
                 <h2 className="flex items-center gap-3 border-b pb-4 text-lg font-bold"><Palette className="h-7 w-7 text-primary" />Brand identity</h2>
-                {!canManage && <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Branding access has not been granted to your account. Ask a Frigo administrator to open Settings → Branding permissions and enable “Branding administrator” for your user. You can view your clinic settings here.</p>}
                 <fieldset disabled={!canManage || saving} className="min-w-0 space-y-5 disabled:opacity-70">
                     <div className="space-y-2"><Label htmlFor="brand-name">Clinic name</Label><Input id="brand-name" required maxLength={120} value={brand.name} onChange={event => setBrand({ ...brand, name: event.target.value })} /></div>
                     <div className="space-y-3"><Label htmlFor="brand-logo">Clinic logo</Label><div className="relative rounded-xl border border-dashed border-primary/50 bg-primary/5 text-center focus-within:ring-2 focus-within:ring-primary">

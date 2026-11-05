@@ -24,10 +24,9 @@ export function requirePlatformAdmin(user: TenantUser): void {
 export function requireClinic(
   user: TenantUser,
   id: string,
-  manage = false,
 ): void {
   const scope = clinicScope(user);
-  if (scope !== null && (scope !== id || (manage && !user.is_clinic_admin))) {
+  if (scope !== null && scope !== id) {
     throw new ForbiddenException('You cannot manage or access this clinic.');
   }
 }

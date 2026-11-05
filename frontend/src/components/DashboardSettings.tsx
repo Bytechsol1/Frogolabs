@@ -7,7 +7,6 @@ import { useFormValidation } from '@/lib/use-form-validation';
 import { FieldError } from '@/components/ui/field-error';
 import { prepareEmailVerification } from '@/lib/email-verification';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { ClinicBrandingSettings } from '@/components/ClinicBrandingSettings';
 import { ClinicAvatar } from '@/components/ClinicBrand';
 import { useBranding } from '@/context/BrandingContext';
@@ -43,8 +42,8 @@ export function DashboardSettings({ initialTab }: { initialTab?: string }) {
     const { branding } = useBranding();
     const isAdmin = user?.role === 'ADMIN';
     const canViewBranding = isAdmin || user?.role === 'CLINIC_USER';
-    const defaultTab = isAdmin ? 'users' : user?.is_clinic_admin ? 'branding' : 'profile';
-    // Keep the open tab stable when the server refreshes branding permissions.
+    const defaultTab = isAdmin ? 'users' : user?.role === 'CLINIC_USER' ? 'branding' : 'profile';
+    // Keep the open tab stable when the account profile refreshes.
     const [selectedTab, setSelectedTab] = useState(initialTab ?? defaultTab);
     const requestedTab = selectedTab;
     const activeTab = (requestedTab === 'branding' && canViewBranding) || (requestedTab === 'users' && isAdmin) || requestedTab === 'profile' ? requestedTab : defaultTab;
@@ -146,13 +145,6 @@ export function DashboardSettings({ initialTab }: { initialTab?: string }) {
                     {isAdmin ? 'Manage users, clinic branding and your profile.' : 'Manage your clinic branding, profile and security.'}
                 </p>
             </div>
-
-            {isAdmin && <div className="max-w-xl">
-                <Link href="/dashboard/settings/users" className="block rounded-2xl border border-[#e4dec3] bg-white p-5 hover:bg-slate-50">
-                    <h2 className="font-semibold">Branding permissions</h2>
-                    <p className="mt-1 text-sm text-slate-600">Choose which clinic staff can manage their own clinic branding.</p>
-                </Link>
-            </div>}
 
             <Tabs value={activeTab} onValueChange={value => setSelectedTab(String(value))} className="w-full">
                 <TabsList className="bg-white/10 p-1 rounded-full border border-white/20 inline-flex shadow-xs">

@@ -220,18 +220,17 @@ function stop(child) {
             await db.user.update({ where: { id: managerId }, data: { is_clinic_admin: false } });
             await signIn(managerId);
             await checkNavbar(null, initialName);
-            expect(!await evaluate(`!!(${brandingLink})`), 'Unprivileged staff must not see branding navigation.');
+            expect(!await evaluate(`!!(${brandingLink})`), 'Branding must remain under Settings, without a separate navbar link.');
             await navigate('/dashboard/branding');
-            await until(() => evaluate("document.getElementById('brand-name')?.matches(':disabled')"), 'read-only staff settings');
+            await until(() => evaluate("!!document.getElementById('brand-name') && !document.getElementById('brand-name').matches(':disabled')"), 'staff can edit their own clinic without an administrator flag');
             await signIn('tenant-platform-admin');
             expect(await evaluate("document.querySelector('header [data-navbar-brand] img')?.getAttribute('src') === '/logo.jpg' && document.querySelectorAll('header [data-navbar-brand] img').length === 1"), 'Platform administrators must keep only the Frigo logo.');
             await navigate('/dashboard/settings');
-            await until(() => evaluate("!!document.querySelector('main a[href=\"/dashboard/settings/users\"]')"), 'permissions discovery in Settings');
-            await evaluate("document.querySelector('main a[href=\"/dashboard/settings/users\"]').click()");
-            const checkbox = `document.querySelector('input[aria-label="Branding administrator for Synthetic staff ${index}"]')`;
-            await until(() => evaluate(`!!(${checkbox}) && !(${checkbox}).checked`), 'manager grant checkbox');
-            await evaluate(`(${checkbox}).click()`);
-            await until(() => evaluate(`(${checkbox})?.checked && document.body.textContent.includes('Branding access granted')`), 'administrator grant');
+            await until(() => evaluate("document.body.textContent.includes('Platform Settings')"), 'platform settings loaded');
+            expect(await evaluate("!document.querySelector('main a[href=\"/dashboard/settings/users\"]') && !document.body.textContent.includes('Branding permissions')"), 'Branding permission links must be removed.');
+            await navigate('/dashboard/settings/users');
+            await until(() => evaluate("location.pathname === '/dashboard/settings' && !!document.getElementById('brand-name')"), 'retired permission page redirects to branding');
+            expect(await evaluate("!document.body.textContent.includes('Manage clinic administrators') && !document.querySelector('input[aria-label^=\"Branding administrator\"]')"), 'The permission page and grant controls must be retired.');
             const adminToken = await evaluate("localStorage.getItem('access_token')");
             await navigate(`/dashboard/branding?clinic=${clinicId}`);
             await until(() => evaluate(`location.pathname === '/dashboard/settings' && new URLSearchParams(location.search).get('clinic') === ${JSON.stringify(clinicId)} && document.getElementById('branding-clinic')?.value === ${JSON.stringify(clinicId)} && !!document.getElementById('brand-name')`), 'administrator legacy link keeps the selected clinic');
@@ -247,14 +246,9 @@ function stop(child) {
             await checkNavbar(null, initialName);
             await checkProfilePages(null);
             expect(await evaluate("!document.getElementById('brand-info') && !document.getElementById('brand-services') && !document.querySelector('main a[href^=\"/patient/results\"]') && !Array.from(document.querySelectorAll('main summary')).some(element => /Live preview|Clinic information/.test(element.textContent))"), 'Removed branding sections must not appear in Settings.');
-            expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, managerToken, { is_clinic_admin: true }) === 403, 'A manager must not self-grant.');
-            expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, adminToken, { is_clinic_admin: false }) === 200, 'Administrator must be able to revoke permission.');
-            await evaluate("window.dispatchEvent(new Event('focus'))");
-            await until(() => evaluate("document.getElementById('brand-name').matches(':disabled')"), 'permission revocation refresh');
-            expect(await callApi('PUT', `/branding/${clinicId}`, managerToken, {}) === 403, 'Revoked managers must be denied by the backend.');
-            expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, adminToken, { is_clinic_admin: true }) === 200, 'Administrator must be able to restore permission.');
-            await evaluate("window.dispatchEvent(new Event('focus'))");
-            await until(() => evaluate("!document.getElementById('brand-name').matches(':disabled')"), 'permission grant refresh without signing out');
+            expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, managerToken, { is_clinic_admin: true }) === 404, 'The retired assignment endpoint must be unavailable to staff.');
+            expect(await callApi('PATCH', `/users/${managerId}/clinic-admin`, adminToken, { is_clinic_admin: false }) === 404, 'The retired assignment endpoint must be unavailable to administrators.');
+            expect(await callApi('PUT', `/branding/tenant-fixture-${index ? 'a' : 'b'}`, managerToken, {}) === 403, 'Staff must still be blocked from another clinic.');
             await input('primary_color', primary);
             await input('secondary_color', secondary);
             await input('brand-name', name);
@@ -348,7 +342,7 @@ function stop(child) {
             const patientScreen = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
             fs.writeFileSync(path.join(artifacts, `clinic-${index ? 'b' : 'a'}-patient.png`), Buffer.from(patientScreen.data, 'base64'));
             await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
-            console.log(`Browser checks passed for synthetic clinic ${index ? 'B' : 'A'}: login with no extra profile request, one shared focus/visibility refresh, Settings branding without preview/portal/information sections, hidden data preserved, clinic logo in both My Profile pages and navbar, upload/replacement/removal and reload, missing-logo fallback/recovery, permission grant/revoke, 320/390/1440px layouts, patient branding and access.`);
+            console.log(`Browser checks passed for synthetic clinic ${index ? 'B' : 'A'}: own-clinic staff editing without a separate permission, removed permission links and controls, retired route redirect, cross-clinic access denied, login request deduplication, clinic logo in both My Profile pages and navbar, upload/replacement/removal and reload, missing-logo fallback/recovery, 320/390/1440px layouts, patient branding and access.`);
         }
     } catch (error) {
         console.error('Browser API checks: ' + JSON.stringify(apiChecks));

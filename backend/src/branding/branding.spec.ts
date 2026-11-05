@@ -8,12 +8,12 @@ import {
 } from './branding.service';
 import { clinicScope, requireClinic } from '../common/tenant';
 
-describe('Clinic branding validation and permissions', () => {
+describe('Clinic branding validation and tenant access', () => {
   const user = {
     id: 'staff-a',
     role: 'CLINIC_USER',
     clinic_id: 'clinic-a',
-    is_clinic_admin: true,
+    is_clinic_admin: false,
   };
   const draft = {
     name: 'NextGen Health',
@@ -50,16 +50,16 @@ describe('Clinic branding validation and permissions', () => {
     expect(result.primary_color).toBe('#0F766E');
     expect(result.services).toEqual([]);
   });
-  it('restricts editing to the assigned clinic administrator or platform administrator', () => {
-    expect(() => requireClinic(user, 'clinic-b', true)).toThrow(
+  it('allows clinic staff to edit their own branding without an administrator flag', () => {
+    expect(() => requireClinic(user, 'clinic-b')).toThrow(
       ForbiddenException,
     );
     expect(() =>
-      requireClinic({ ...user, is_clinic_admin: false }, 'clinic-a', true),
-    ).toThrow(ForbiddenException);
-    expect(() => requireClinic(user, 'clinic-a', true)).not.toThrow();
+      requireClinic({ ...user, is_clinic_admin: true }, 'clinic-a'),
+    ).not.toThrow();
+    expect(() => requireClinic(user, 'clinic-a')).not.toThrow();
     expect(() =>
-      requireClinic({ ...user, role: 'ADMIN' }, 'clinic-b', true),
+      requireClinic({ ...user, role: 'ADMIN' }, 'clinic-b'),
     ).not.toThrow();
     expect(() => clinicScope({ ...user, clinic_id: null })).toThrow(
       ForbiddenException,

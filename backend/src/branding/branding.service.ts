@@ -106,7 +106,7 @@ export class BrandingService {
   }
 
   async save(id: string, input: unknown, user: TenantUser) {
-    requireClinic(user, id, true);
+    requireClinic(user, id);
     const data = parseRecord(brandingSchema, input);
     return publicBranding(
       await this.prisma.clinic.update({
@@ -122,7 +122,7 @@ export class BrandingService {
     file: Express.Multer.File | undefined,
     user: TenantUser,
   ) {
-    requireClinic(user, id, true);
+    requireClinic(user, id);
     if (!file) throw new BadRequestException('Choose a logo image.');
     const { extension, mime } = logoType(file.buffer);
     const existing = await this.prisma.clinic.findUnique({
@@ -164,7 +164,7 @@ export class BrandingService {
   }
 
   async remove(id: string, user: TenantUser) {
-    requireClinic(user, id, true);
+    requireClinic(user, id);
     const existing = await this.prisma.clinic.findUnique({
       where: { id },
       select: brandingSelect,

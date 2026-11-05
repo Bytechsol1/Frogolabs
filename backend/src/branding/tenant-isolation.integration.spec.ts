@@ -359,11 +359,12 @@ integration('Two-clinic HTTP isolation with real PostgreSQL', () => {
         ],
         ['get', `/validic/connect-url/tenant-patient-${other}`, undefined, 404],
         ['get', '/dashboard/admin/stats', undefined, 403],
+        ['get', '/users', undefined, 403],
         [
           'patch',
           '/users/tenant-platform-admin/clinic-admin',
           { is_clinic_admin: true },
-          403,
+          404,
         ],
       ] as const;
       for (const [method, path, body, status] of denied) {
@@ -472,7 +473,7 @@ integration('Two-clinic HTTP isolation with real PostgreSQL', () => {
       .expect(401);
   });
 
-  it('retains platform administration, supports explicit clinic admin assignment, and fails closed for unassigned users', async () => {
+  it('allows own-clinic branding without a permission flag and rejects retired assignment routes and unassigned users', async () => {
     await request(app.getHttpServer<Server>())
       .get('/api/v1/clinics')
       .set('Authorization', admin())
@@ -481,30 +482,13 @@ integration('Two-clinic HTTP isolation with real PostgreSQL', () => {
       .get('/api/v1/patients/tenant-patient-1')
       .set('Authorization', admin())
       .expect(200);
-    await request(app.getHttpServer<Server>())
-      .patch('/api/v1/users/tenant-staff-0/clinic-admin')
-      .set('Authorization', admin())
-      .send({ is_clinic_admin: false })
-      .expect(200);
-    const revoked = await app.get(JwtStrategy).validate({ sub: 'tenant-staff-0' });
-    expect(revoked.is_clinic_admin).toBe(false);
-    await request(app.getHttpServer<Server>())
-      .put(`/api/v1/branding/${clinics[0]}`)
-      .set('Authorization', own(0))
-      .send(brandA)
-      .expect(403);
-    await request(app.getHttpServer<Server>())
-      .patch('/api/v1/users/tenant-staff-0/clinic-admin')
-      .set('Authorization', admin())
-      .send({ is_clinic_admin: true })
-      .expect(200);
-    const granted = await app.get(JwtStrategy).validate({ sub: 'tenant-staff-0' });
-    expect(granted.is_clinic_admin).toBe(true);
-    await request(app.getHttpServer<Server>())
-      .put(`/api/v1/branding/${clinics[0]}`)
-      .set('Authorization', own(0))
-      .send(brandA)
-      .expect(200);
+    for (const legacyFlag of [false, true]) {
+      await db.user.update({ where: { id: 'tenant-staff-0' }, data: { is_clinic_admin: legacyFlag } });
+      await request(app.getHttpServer<Server>()).put(`/api/v1/branding/${clinics[0]}`).set('Authorization', own(0)).send(brandA).expect(200);
+      await request(app.getHttpServer<Server>()).put(`/api/v1/branding/${clinics[1]}`).set('Authorization', own(0)).send(brandA).expect(403);
+    }
+    await request(app.getHttpServer<Server>()).patch('/api/v1/users/tenant-staff-0/clinic-admin').set('Authorization', admin()).send({ is_clinic_admin: true }).expect(404);
+    await request(app.getHttpServer<Server>()).put(`/api/v1/branding/${clinics[0]}`).set('Authorization', auth('tenant-unassigned')).send(brandA).expect(403);
     await request(app.getHttpServer<Server>())
       .get('/api/v1/patients')
       .set('Authorization', auth('tenant-unassigned'))
